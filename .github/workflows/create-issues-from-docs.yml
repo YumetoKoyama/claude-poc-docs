@@ -1,0 +1,162 @@
+name: ドキュメントから Issue 自動作成
+
+# -------------------------------------------------------
+# トリガー設定
+# docs リポジトリの main への PR マージ（クローズ）で起動する。
+# claude-code-action は push イベント非対応のため、pull_request を使う。
+# ※ 採択 = PR マージ（直 push 禁止の branch protection 前提）のため、
+#    push トリガーでなくても運用上の取りこぼしはない。
+# -------------------------------------------------------
+on:
+  pull_request:
+    types:
+      - closed
+    branches:
+      - main
+
+# -------------------------------------------------------
+# 権限設定
+# Issue 作成・ラベル管理・Project 操作に必要な権限を付与する。
+# contents: read  ... ソースコード読み取り
+# issues: write   ... Issue 作成・編集
+# -------------------------------------------------------
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  create-issues-from-docs:
+    # マージされた PR のみ対象（マージせずクローズした PR では起動しない）
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+
+    steps:
+      # -------------------------------------------------------
+      # リポジトリのチェックアウト
+      # マージコミットをチェックアウトし、fetch-depth: 2 で
+      # マージ前 main（第一親）との差分を取得できるようにする
+      # -------------------------------------------------------
+      - name: チェックアウト
+        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # 6.0.0
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          fetch-depth: 2
+          # CLAUDE_GITHUB_PAT を使うことで gh CLI が Issue 作成・Project 操作を実行できる
+          token: ${{ secrets.CLAUDE_GITHUB_PAT }}
+
+      # -------------------------------------------------------
+      # 変更ドキュメントのパス取得
+      # .github/ と .claude/ 配下（ワークフロー・スキル自身）は除外する。
+      # 変更ファイルがない場合は空文字になる。
+      # マージコミット～第一親（マージ前 main）の差分 = PR の全変更
+      # （squash / merge commit のどちらでも成立する）
+      # -------------------------------------------------------
+      - name: 変更ドキュメントのパス取得
+        id: changed-docs
+        run: |
+          # HEAD~1（マージ前 main）との差分から、ワークフロー・スキル以外のファイルを抽出する
+          CHANGED=$(git diff --name-only HEAD~1 HEAD \
+            | grep -v '^\.github/' \
+            | grep -v '^\.claude/' \
+            | tr '\n' ' ' \
+            || true)
+          echo "files=${CHANGED}" >> $GITHUB_OUTPUT
+          echo "変更されたドキュメント: ${CHANGED:-（なし）}"
+
+      # -------------------------------------------------------
+      # ドキュメント変更の有無を確認
+      # ドキュメント以外のファイルのみ変更された場合はスキップする
+      # -------------------------------------------------------
+      - name: ドキュメント変更の有無を確認
+        id: check-changes
+        run: |
+          if [ -z "${{ steps.changed-docs.outputs.files }}" ]; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "ドキュメントの変更なし。Issue 作成をスキップします。"
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+            echo "ドキュメントの変更を検出。Issue 作成を開始します。"
+          fi
+
+      # -------------------------------------------------------
+      # Claude Code Action でドキュメントを解析し Issue を作成する
+      #
+      # スキル: /create-issues-from-docs
+      #
+      # 【必要なシークレット】(Settings > Secrets > Repository secrets)
+      #   CLAUDE_CODE_OAUTH_TOKEN ... Claude Code の OAuth トークン
+      #   CLAUDE_GITHUB_PAT       ... Issue 作成・Project 連携に使う GitHub PAT
+      #                              （スコープ: repo, project, read:org）
+      #
+      # 【必要なリポジトリ変数】(Settings > Variables > Repository variables)
+      #   PROJECT_NUMBER          ... 連携先 GitHub Project の番号
+      #                              （Project URL の末尾の数字: /projects/<番号>）
+      #   PROJECT_OWNER           ... GitHub Project のオーナー
+      #                              （org 名またはユーザー名）
+      #
+      # 【Issue 作成先リポジトリ】
+      #   スキルがドキュメント内容から自動判断して適切なリポジトリへ起票する。
+      #   フロントエンド: claude-poc-frontend
+      #   バックエンド:   claude-poc-backend
+      #   バッチ:         claude-poc-batch
+      # -------------------------------------------------------
+      - name: Claude Code - ドキュメントから Issue 作成
+        if: steps.check-changes.outputs.skip == 'false'
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # PAT を使うことで Issue 作成・Project 操作が可能になる
+          github_token: ${{ secrets.CLAUDE_GITHUB_PAT }}
+          # max-turns: Issue 数が多い場合に備えて余裕を持った値を設定している
+          claude_args: "--max-turns 120"
+          show_full_output: true
+          prompt: |
+            /create-issues-from-docs
+
+            ## 実行コンテキスト
+
+            - リポジトリ（docs）: ${{ github.repository }}
+            - マージコミット SHA: ${{ github.event.pull_request.merge_commit_sha }}
+            - マージ PR: #${{ github.event.pull_request.number }} ${{ github.event.pull_request.title }}
+            - Issue 作成先オーナー: ${{ github.repository_owner }}
+            - GitHub Project 番号: ${{ vars.PROJECT_NUMBER }}
+            - GitHub Project オーナー: ${{ vars.PROJECT_OWNER }}
+            - 変更されたドキュメント:
+              ${{ steps.changed-docs.outputs.files }}
+
+            上記のドキュメントを解析し、スキルの指示に従って Issue を作成してください。
+          # -------------------------------------------------------
+          # Claude Code Action に許可するツール権限
+          # 読み取り系・git・gh CLI のみ許可し、最小権限に絞っている
+          # -------------------------------------------------------
+          settings: |
+            {
+              "permissions": {
+                "allow": [
+                  "Read(*)",
+                  "Glob(*)",
+                  "Grep(*)",
+                  "Bash(git diff:*)",
+                  "Bash(git log:*)",
+                  "Bash(git show:*)",
+                  "Bash(git cat-file:*)",
+                  "Bash(cat:*)",
+                  "Bash(ls:*)",
+                  "Bash(find:*)",
+                  "Bash(grep:*)",
+                  "Bash(echo:*)",
+                  "Bash(printf:*)",
+                  "Bash(sleep:*)",
+                  "Bash(gh issue create:*)",
+                  "Bash(gh issue comment:*)",
+                  "Bash(gh issue edit:*)",
+                  "Bash(gh issue list:*)",
+                  "Bash(gh issue view:*)",
+                  "Bash(gh label create:*)",
+                  "Bash(gh label list:*)",
+                  "Bash(gh project item-add:*)",
+                  "Bash(gh project list:*)",
+                  "Bash(gh project view:*)"
+                ]
+              }
+            }

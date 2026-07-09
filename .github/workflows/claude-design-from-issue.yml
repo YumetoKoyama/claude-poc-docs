@@ -1,0 +1,158 @@
+name: Claude - Issue から設計書作成・PR作成
+
+# docs リポジトリは要件定義・設計のみを担い、製造（実装）は行わない。
+# 設計書作成 Issue に @claude と書いてコメントすることで、Claude Code が
+#   1. feature ブランチを作成
+#   2. design-loop スキル（produce → review → fix の自動ループ）で設計書を作成
+#      （produce 段は design-from-issue が Issue から対象要件定義書を解決して実行）
+#   3. PR を作成
+# を自動実行する。実装 Issue は各実装リポジトリ側のワークフローが担当する。
+#
+# 必要シークレット:
+#   CLAUDE_CODE_OAUTH_TOKEN  ... Claude Code の OAuth トークン
+#   CLAUDE_GITHUB_PAT        ... Claude のコミット/push で CI を再トリガーするための PAT
+#                                (GITHUB_TOKEN はデフォルトで CI を起動しないため PAT が必要)
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  id-token: write
+  actions: read
+
+jobs:
+  claude-design:
+    # PR コメントではなく Issue コメントに限定し、かつ @claude を含む場合のみ実行
+    if: |
+      github.event.issue.pull_request == null &&
+      contains(github.event.comment.body, '@claude')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # 6.0.0
+        with:
+          token: ${{ secrets.CLAUDE_GITHUB_PAT }}
+          fetch-depth: 0
+
+      # 正典 rules の追加 checkout（技術スタック確定ゲート用）:
+      # docs 単体のチェックアウトでは FE/BE の技術スタック確定表（*-00-stack.md）が見えず、
+      # check-stack-decided.sh が「確定表なし = 要確定」で常に exit 1 になるため、
+      # 正典（.claude/rules/）のみ sparse checkout で渡す。
+      # ブロック判定は design-loop / design-from-issue 内のゲートが行う
+      # （workflow step で一律 fail させると要件系 Issue まで誤ブロックするため行わない）。
+      # 配置先は check-stack-decided.sh の親アンブレラモードと同じレイアウトに合わせる。
+      # なお protect-canon hook により Claude はこの checkout 物も書き換え不可（読み取り専用の正典）。
+      - name: Checkout frontend rules（正典・読み取り専用）
+        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # 6.0.0
+        with:
+          repository: ${{ github.repository_owner }}/claude-poc-frontend
+          path: claude-poc-frontend
+          sparse-checkout: .claude/rules
+          token: ${{ secrets.CLAUDE_GITHUB_PAT }}
+
+      - name: Checkout backend rules（正典・読み取り専用）
+        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # 6.0.0
+        with:
+          repository: ${{ github.repository_owner }}/claude-poc-backend
+          path: claude-poc-backend
+          sparse-checkout: .claude/rules
+          token: ${{ secrets.CLAUDE_GITHUB_PAT }}
+
+      - name: Claude Code - Issue から設計書作成・PR作成
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # PAT を使うことで Claude のコミット/push が CI ワークフローを再トリガーする
+          github_token: ${{ secrets.CLAUDE_GITHUB_PAT }}
+          claude_args: "--max-turns 120"  # design-loop（produce→review→fix×3）に対応できる上限
+          show_full_output: true
+          # docs では製造を行わないため implement 系スキルは呼ばない。
+          # 設計書作成 Issue は /design-loop（produce 段 = /design-from-issue）で処理する。
+          prompt: |
+            GitHub Issue #${{ github.event.issue.number }} への対応を開始してください。
+
+            コメント内容:
+            ${{ github.event.comment.body }}
+
+            以下の手順で実行してください:
+            1. gh issue view で Issue 本文を確認し、本文に「実施手順」セクションがある場合は**それに従う**
+            2. 実施手順が無い場合は、feature ブランチ（例: feature/design-issue-${{ github.event.issue.number }}）を作成して
+               /design-loop ${{ github.event.issue.number }} を実行する
+               （produce 段の /design-from-issue が Issue 本文から対象の要件定義書を解決し、
+                 docs/design/ 配下に設計書を生成。review → fix が自動で回る）
+            3. いずれの場合も以下の流れで一気通貫で行う:
+               a. feature ブランチ上で設計書の作成・レビューループを完了させる
+               b. 上記の作業が完了したら、今回の変更で docs/design/ 配下のファイルが追加・変更されているか確認する
+                  （例: git diff origin/main --name-only | grep '^docs/design/'）
+                  該当ファイルがある場合は以下を実行する:
+                  - /ui-brief-from-design を実行し、docs/design/ui-design/brief/ 配下のブリーフを生成・更新する
+                  - 生成したブリーフファイルを git add && git commit && git push する
+                    （zip 化とアーティファクト登録は後続の workflow ステップが行う。zip 自体はコミットしない）
+               c. PR を作成する（人手レビューと main へのマージ＝採択は人間が行う。Claude はマージしない）
+               d. 作業完了後に Issue #${{ github.event.issue.number }} へコメントで結果を報告する
+          # Claude Code Action が使用するツール権限
+          # （docs では製造を行わないため mvn / npm / npx は許可しない）
+          settings: |
+            {
+              "permissions": {
+                "allow": [
+                  "Write(*)",
+                  "Edit(*)",
+                  "Bash(git checkout:*)",
+                  "Bash(git pull:*)",
+                  "Bash(git push:*)",
+                  "Bash(git add:*)",
+                  "Bash(git commit:*)",
+                  "Bash(git branch:*)",
+                  "Bash(git log:*)",
+                  "Bash(git diff:*)",
+                  "Bash(git status:*)",
+                  "Bash(cat:*)",
+                  "Bash(ls:*)",
+                  "Bash(find:*)",
+                  "Bash(grep:*)",
+                  "Bash(mkdir:*)",
+                  "Bash(bash:*)",
+                  "Bash(gh pr create:*)",
+                  "Bash(gh pr view:*)",
+                  "Bash(gh pr list:*)",
+                  "Bash(gh pr comment:*)",
+                  "Bash(gh issue view:*)",
+                  "Bash(gh issue comment:*)",
+                  "Bash(gh issue edit:*)",
+                  "Bash(gh issue list:*)",
+                  "Bash(gh run view:*)",
+                  "Bash(git apply:*)",
+                  "Bash(git stash:*)",
+                  "Bash(git cat-file:*)",
+                  "Bash(git hash-object:*)",
+                  "Bash(git version:*)",
+                  "Bash(base64:*)",
+                  "Bash(wc:*)"
+                ]
+              }
+            }
+
+      - name: ui-brief を zip してアーティファクトにアップロード
+        if: always()
+        id: check-brief
+        run: |
+          if [ -d "docs/design/ui-design/brief" ] && [ -n "$(ls -A docs/design/ui-design/brief 2>/dev/null)" ]; then
+            zip -r ui-brief.zip docs/design/ui-design/brief/
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: ui-brief アーティファクトをアップロード
+        if: steps.check-brief.outputs.exists == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-brief-issue-${{ github.event.issue.number }}
+          path: ui-brief.zip
+          retention-days: 30
