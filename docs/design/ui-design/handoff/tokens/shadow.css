@@ -1,0 +1,8 @@
+:root {
+  /* 平坦・低エレベーション（信頼感重視、過度な立体感を避ける） */
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 2px 8px rgba(15, 23, 42, 0.08);
+  --shadow-lg: 0 8px 24px rgba(15, 23, 42, 0.12);
+
+  --focus-ring: 0 0 0 3px var(--accent-100), 0 0 0 1px var(--accent-500);
+}

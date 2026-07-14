@@ -1,0 +1,1704 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<title>配送マッチング BtoB — Handoff Prototype</title>
+<link rel="stylesheet" href="../tokens/colors_and_type.css" />
+<link rel="stylesheet" href="../tokens/spacing.css" />
+<link rel="stylesheet" href="../tokens/radius.css" />
+<link rel="stylesheet" href="../tokens/shadow.css" />
+<link rel="stylesheet" href="../tokens/layout.css" />
+<link rel="stylesheet" href="../tokens/base.css" />
+<script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js" crossorigin="anonymous"></script>
+<style>
+  html, body, #root { height: 100%; margin: 0; }
+  .kit-shell { display: flex; height: 100%; min-width: 1280px; }
+  .kit-nav { width: 240px; flex-shrink: 0; background: var(--gray-900); color: var(--gray-300); padding: var(--space-5) 0; overflow-y: auto; }
+  .kit-nav h4 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--gray-500); padding: var(--space-2) var(--space-5); margin: var(--space-4) 0 var(--space-1); }
+  .kit-nav button { display: block; width: 100%; text-align: left; background: transparent; border: none; color: var(--gray-300); padding: var(--space-2) var(--space-5); font-size: 13px; cursor: pointer; }
+  .kit-nav button.active { background: var(--accent-700); color: #fff; }
+  .kit-nav button:hover:not(.active) { background: var(--gray-800); }
+  .kit-stage { flex: 1; overflow: auto; background: var(--color-bg-canvas); }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" data-presets="react">
+// Auto-derived standalone copy of the design-system primitives for the UI kit preview.
+// Source of truth remains components/**/*.jsx — keep in sync when those change.
+const { useState } = React;
+
+function AppHeader({
+  tenantName = 'テナント名',
+  userName = 'ユーザー名',
+  unreadCount = 0,
+  onLogoClick,
+  onBellClick,
+  onLogout,
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const badge = unreadCount > 9 ? '9+' : String(unreadCount);
+
+  return (
+    <header
+      style={{
+        height: 'var(--header-height)',
+        minWidth: 'var(--layout-min-width)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: '0 var(--page-padding-x)',
+        background: 'var(--color-surface)',
+        borderBottom: '1px solid var(--color-border)',
+      }}
+    >
+      <div
+        onClick={onLogoClick}
+        style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', cursor: 'pointer' }}
+      >
+        <div
+          style={{
+            width: 28,
+            height: 28,
+            borderRadius: 'var(--radius-md)',
+            background: 'var(--color-primary)',
+            color: 'var(--color-text-inverse)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontWeight: 'var(--font-weight-bold)',
+            fontSize: 'var(--text-sm-size)',
+          }}
+        >
+          配
+        </div>
+        <span style={{ fontSize: 'var(--text-md-size)', fontWeight: 'var(--font-weight-bold)', color: 'var(--color-text-primary)' }}>
+          配送マッチング
+        </span>
+        <span
+          style={{
+            fontSize: 'var(--text-xs-size)',
+            color: 'var(--color-text-tertiary)',
+            borderLeft: '1px solid var(--color-border)',
+            paddingLeft: 'var(--space-3)',
+            marginLeft: 'var(--space-1)',
+          }}
+        >
+          {tenantName}
+        </span>
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-5)' }}>
+        <button
+          onClick={onBellClick}
+          aria-label="通知"
+          style={{
+            position: 'relative',
+            width: 36,
+            height: 36,
+            borderRadius: 'var(--radius-md)',
+            border: '1px solid transparent',
+            background: 'transparent',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-secondary)" strokeWidth="2">
+            <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+            <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+          </svg>
+          {unreadCount > 0 && (
+            <span
+              style={{
+                position: 'absolute',
+                top: 2,
+                right: 2,
+                minWidth: 16,
+                height: 16,
+                padding: '0 3px',
+                borderRadius: 'var(--radius-full)',
+                background: 'var(--color-danger)',
+                color: 'var(--color-text-inverse)',
+                fontSize: 10,
+                fontWeight: 'var(--font-weight-bold)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                lineHeight: 1,
+              }}
+            >
+              {badge}
+            </span>
+          )}
+        </button>
+
+        <div style={{ position: 'relative' }}>
+          <button
+            onClick={() => setMenuOpen((v) => !v)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 'var(--space-2)',
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              padding: 'var(--space-1) var(--space-2)',
+              borderRadius: 'var(--radius-md)',
+            }}
+          >
+            <div
+              style={{
+                width: 26,
+                height: 26,
+                borderRadius: 'var(--radius-full)',
+                background: 'var(--color-surface-sunken)',
+                color: 'var(--color-text-secondary)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 'var(--text-xs-size)',
+                fontWeight: 'var(--font-weight-medium)',
+              }}
+            >
+              {userName.slice(0, 1)}
+            </div>
+            <span style={{ fontSize: 'var(--text-sm-size)', color: 'var(--color-text-primary)' }}>{userName}</span>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-tertiary)" strokeWidth="2">
+              <path d="M6 9l6 6 6-6" />
+            </svg>
+          </button>
+          {menuOpen && (
+            <div
+              style={{
+                position: 'absolute',
+                top: 40,
+                right: 0,
+                minWidth: 140,
+                background: 'var(--color-surface)',
+                border: '1px solid var(--color-border)',
+                borderRadius: 'var(--radius-md)',
+                boxShadow: 'var(--shadow-md)',
+                overflow: 'hidden',
+                zIndex: 20,
+              }}
+            >
+              <button
+                onClick={onLogout}
+                style={{
+                  width: '100%',
+                  textAlign: 'left',
+                  padding: 'var(--space-3) var(--space-4)',
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: 'var(--text-sm-size)',
+                  color: 'var(--color-text-primary)',
+                }}
+              >
+                ログアウト
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </header>
+  );
+}
+
+const NAV_ITEMS = {
+  REQUESTER: [
+    { key: 'dashboard', label: 'ダッシュボード', icon: 'grid' },
+    { key: 'job-new', label: '案件登録', icon: 'plus' },
+    { key: 'job-list', label: '案件一覧', icon: 'list' },
+    { key: 'history', label: '取引履歴', icon: 'clock' },
+    { key: 'users', label: 'ユーザー追加', icon: 'user-plus' },
+  ],
+  CARRIER: [
+    { key: 'dashboard', label: 'ダッシュボード', icon: 'grid' },
+    { key: 'job-open', label: '募集中案件一覧', icon: 'list' },
+    { key: 'job-negotiating', label: '交渉中・済一覧', icon: 'chat' },
+    { key: 'history', label: '取引履歴', icon: 'clock' },
+    { key: 'users', label: 'ユーザー追加', icon: 'user-plus' },
+  ],
+};
+
+const ICONS = {
+  grid: 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z',
+  plus: 'M12 5v14M5 12h14',
+  list: 'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01',
+  chat: 'M21 11.5a8.38 8.38 0 0 1-8.5 8.5A8.5 8.5 0 1 1 21 11.5z',
+  clock: 'M12 8v4l3 3M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z',
+  'user-plus': 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM19 8v6M22 11h-6',
+};
+
+function GlobalNav({ tenantType = 'REQUESTER', activeKey = 'dashboard', onNavigate }) {
+  const items = NAV_ITEMS[tenantType] || NAV_ITEMS.REQUESTER;
+  return (
+    <nav
+      style={{
+        width: 'var(--nav-width)',
+        flexShrink: 0,
+        background: 'var(--color-surface)',
+        borderRight: '1px solid var(--color-border)',
+        padding: 'var(--space-4) var(--space-3)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 'var(--space-1)',
+      }}
+    >
+      {items.map((item) => {
+        const active = item.key === activeKey;
+        return (
+          <button
+            key={item.key}
+            onClick={() => onNavigate && onNavigate(item.key)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 'var(--space-3)',
+              padding: 'var(--space-3) var(--space-3)',
+              border: 'none',
+              borderRadius: 'var(--radius-md)',
+              cursor: 'pointer',
+              textAlign: 'left',
+              background: active ? 'var(--color-primary-subtle)' : 'transparent',
+              color: active ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+              fontSize: 'var(--text-sm-size)',
+              fontWeight: active ? 'var(--font-weight-medium)' : 'var(--font-weight-regular)',
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <path d={ICONS[item.icon]} />
+            </svg>
+            {item.label}
+          </button>
+        );
+      })}
+      <div style={{ flex: 1 }} />
+      <a
+        href="#contact"
+        style={{
+          fontSize: 'var(--text-xs-size)',
+          color: 'var(--color-text-tertiary)',
+          padding: 'var(--space-3)',
+          borderTop: '1px solid var(--color-border)',
+        }}
+      >
+        お問い合わせ
+      </a>
+    </nav>
+  );
+}
+
+function Card({ title, actions, children, padded = true }) {
+  return (
+    <div
+      style={{
+        background: 'var(--color-surface)',
+        border: '1px solid var(--color-border)',
+        borderRadius: 'var(--radius-lg)',
+        boxShadow: 'var(--shadow-sm)',
+      }}
+    >
+      {(title || actions) && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: 'var(--space-4) var(--space-5)',
+            borderBottom: '1px solid var(--color-border)',
+          }}
+        >
+          <h3
+            style={{
+              margin: 0,
+              fontSize: 'var(--text-md-size)',
+              fontWeight: 'var(--font-weight-bold)',
+              color: 'var(--color-text-primary)',
+            }}
+          >
+            {title}
+          </h3>
+          {actions && <div style={{ display: 'flex', gap: 'var(--space-2)' }}>{actions}</div>}
+        </div>
+      )}
+      <div style={{ padding: padded ? 'var(--space-5)' : 0 }}>{children}</div>
+    </div>
+  );
+}
+
+function Panel({ title, description, children }) {
+  return (
+    <section
+      style={{
+        background: 'var(--color-surface-sunken)',
+        border: '1px solid var(--color-border)',
+        borderRadius: 'var(--radius-lg)',
+        padding: 'var(--space-5)',
+      }}
+    >
+      {title && (
+        <div style={{ marginBottom: 'var(--space-4)' }}>
+          <h4
+            style={{
+              margin: 0,
+              fontSize: 'var(--text-base-size)',
+              fontWeight: 'var(--font-weight-bold)',
+              color: 'var(--color-text-primary)',
+            }}
+          >
+            {title}
+          </h4>
+          {description && (
+            <p style={{ margin: 'var(--space-1) 0 0', fontSize: 'var(--text-sm-size)', color: 'var(--color-text-secondary)' }}>
+              {description}
+            </p>
+          )}
+        </div>
+      )}
+      {children}
+    </section>
+  );
+}
+
+const BUTTON_VARIANT_STYLES = {
+  primary: {
+    background: 'var(--color-primary)',
+    color: 'var(--color-text-inverse)',
+    border: '1px solid var(--color-primary)',
+  },
+  secondary: {
+    background: 'var(--color-surface)',
+    color: 'var(--color-text-primary)',
+    border: '1px solid var(--color-border-strong)',
+  },
+  ghost: {
+    background: 'transparent',
+    color: 'var(--color-text-secondary)',
+    border: '1px solid transparent',
+  },
+  danger: {
+    background: 'var(--color-surface)',
+    color: 'var(--color-danger)',
+    border: '1px solid var(--danger-100)',
+  },
+};
+
+const VARIANT_HOVER = {
+  primary: { background: 'var(--color-primary-hover)', borderColor: 'var(--color-primary-hover)' },
+  secondary: { background: 'var(--color-surface-sunken)' },
+  ghost: { background: 'var(--color-surface-sunken)' },
+  danger: { background: 'var(--color-danger-subtle)' },
+};
+
+const SIZE_STYLES = {
+  sm: { padding: '0 var(--space-3)', height: 30, fontSize: 'var(--text-xs-size)' },
+  md: { padding: '0 var(--space-4)', height: 36, fontSize: 'var(--text-sm-size)' },
+  lg: { padding: '0 var(--space-5)', height: 44, fontSize: 'var(--text-md-size)' },
+};
+
+function Button({ variant = 'primary', size = 'md', disabled = false, loading = false, children, onClick, type = 'button' }) {
+  const [hover, setHover] = React.useState(false);
+  const base = BUTTON_VARIANT_STYLES[variant] || BUTTON_VARIANT_STYLES.primary;
+  const hoverStyle = !disabled && hover ? VARIANT_HOVER[variant] : {};
+
+  return (
+    <button
+      type={type}
+      disabled={disabled || loading}
+      onClick={onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        ...base,
+        ...SIZE_STYLES[size],
+        ...hoverStyle,
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 'var(--space-2)',
+        borderRadius: 'var(--radius-md)',
+        fontWeight: 'var(--font-weight-medium)',
+        cursor: disabled || loading ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.45 : 1,
+        transition: 'background 0.12s ease, border-color 0.12s ease',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {loading && (
+        <span
+          style={{
+            width: 12,
+            height: 12,
+            borderRadius: '50%',
+            border: '2px solid currentColor',
+            borderTopColor: 'transparent',
+            animation: 'ds-spin 0.7s linear infinite',
+          }}
+        />
+      )}
+      {children}
+      <style>{'@keyframes ds-spin { to { transform: rotate(360deg); } }'}</style>
+    </button>
+  );
+}
+
+function Field({ label, required = false, hint, error, type = 'text', placeholder, value, onChange, options, as = 'input' }) {
+  const inputStyle = {
+    width: '100%',
+    height: 36,
+    padding: '0 var(--space-3)',
+    borderRadius: 'var(--radius-md)',
+    border: `1px solid ${error ? 'var(--color-danger)' : 'var(--color-border-strong)'}`,
+    background: 'var(--color-surface)',
+    color: 'var(--color-text-primary)',
+    fontSize: 'var(--text-sm-size)',
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
+      {label && (
+        <label style={{ fontSize: 'var(--text-sm-size)', fontWeight: 'var(--font-weight-medium)', color: 'var(--color-text-primary)' }}>
+          {label}
+          {required && <span style={{ color: 'var(--color-danger)', marginLeft: 4 }}>必須</span>}
+        </label>
+      )}
+
+      {as === 'select' ? (
+        <select value={value} onChange={onChange} style={inputStyle}>
+          {(options || []).map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+      ) : as === 'textarea' ? (
+        <textarea
+          value={value}
+          onChange={onChange}
+          placeholder={placeholder}
+          rows={4}
+          style={{ ...inputStyle, height: 'auto', padding: 'var(--space-2) var(--space-3)', resize: 'vertical' }}
+        />
+      ) : (
+        <input type={type} value={value} onChange={onChange} placeholder={placeholder} style={inputStyle} />
+      )}
+
+      {error ? (
+        <span style={{ fontSize: 'var(--text-xs-size)', color: 'var(--color-danger)' }}>{error}</span>
+      ) : hint ? (
+        <span style={{ fontSize: 'var(--text-xs-size)', color: 'var(--color-text-tertiary)' }}>{hint}</span>
+      ) : null}
+    </div>
+  );
+}
+
+function Modal({ open = true, title, children, footer, onClose }) {
+  if (!open) return null;
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        inset: 0,
+        background: 'rgba(19, 22, 28, 0.45)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 100,
+      }}
+      onClick={onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: 480,
+          maxWidth: '90%',
+          background: 'var(--color-surface)',
+          borderRadius: 'var(--radius-lg)',
+          boxShadow: 'var(--shadow-lg)',
+          overflow: 'hidden',
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: 'var(--space-4) var(--space-5)',
+            borderBottom: '1px solid var(--color-border)',
+          }}
+        >
+          <h3 style={{ margin: 0, fontSize: 'var(--text-md-size)', fontWeight: 'var(--font-weight-bold)' }}>{title}</h3>
+          <button
+            onClick={onClose}
+            aria-label="閉じる"
+            style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--color-text-tertiary)' }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div style={{ padding: 'var(--space-5)', fontSize: 'var(--text-sm-size)', color: 'var(--color-text-primary)' }}>{children}</div>
+        {footer && (
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: 'var(--space-3)',
+              padding: 'var(--space-4) var(--space-5)',
+              borderTop: '1px solid var(--color-border)',
+              background: 'var(--color-surface-sunken)',
+            }}
+          >
+            {footer}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const TONE = {
+  success: { bg: 'var(--color-success-subtle)', fg: 'var(--success-700)', icon: 'M20 6L9 17l-5-5' },
+  error: { bg: 'var(--color-danger-subtle)', fg: 'var(--danger-700)', icon: 'M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z' },
+  info: { bg: 'var(--color-info-subtle)', fg: 'var(--info-700)', icon: 'M12 16v-4M12 8h.01M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z' },
+};
+
+function Toast({ tone = 'error', message, onClose }) {
+  const t = TONE[tone] || TONE.error;
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        top: 'var(--space-6)',
+        right: 'var(--space-6)',
+        display: 'flex',
+        alignItems: 'flex-start',
+        gap: 'var(--space-3)',
+        minWidth: 320,
+        maxWidth: 420,
+        padding: 'var(--space-4)',
+        borderRadius: 'var(--radius-md)',
+        background: 'var(--color-surface)',
+        border: '1px solid var(--color-border)',
+        borderLeft: `3px solid ${t.fg}`,
+        boxShadow: 'var(--shadow-lg)',
+        zIndex: 200,
+      }}
+    >
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={t.fg} strokeWidth="2" style={{ flexShrink: 0, marginTop: 1 }}>
+        <path d={t.icon} />
+      </svg>
+      <span style={{ fontSize: 'var(--text-sm-size)', color: 'var(--color-text-primary)', flex: 1 }}>{message}</span>
+      <button onClick={onClose} aria-label="閉じる" style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--color-text-tertiary)' }}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M18 6L6 18M6 6l12 12" />
+        </svg>
+      </button>
+    </div>
+  );
+}
+
+// 案件ステータス / 応募ステータスの表示ラベルと配色マッピング
+const STATUS_MAP = {
+  // 案件ステータス
+  ST001: { label: '募集中', tone: 'info' },
+  ST002: { label: '交渉中', tone: 'warning' },
+  ST003: { label: '成約済', tone: 'success' },
+  ST004: { label: '運送中', tone: 'violet' },
+  ST005: { label: '完了', tone: 'success-strong' },
+  ST006: { label: '評価済', tone: 'neutral' },
+  ST007: { label: 'キャンセル', tone: 'neutral' },
+  // 応募ステータス
+  ST101: { label: '応募中', tone: 'info' },
+  ST102: { label: '成約', tone: 'success' },
+  ST103: { label: 'クローズ（他社成約）', tone: 'neutral' },
+  ST104: { label: 'クローズ（セット連動不成立）', tone: 'neutral' },
+};
+
+const TONE_STYLES = {
+  info: { bg: 'var(--color-info-subtle)', fg: 'var(--info-700)' },
+  warning: { bg: 'var(--color-warning-subtle)', fg: 'var(--warning-700)' },
+  success: { bg: 'var(--color-success-subtle)', fg: 'var(--success-700)' },
+  'success-strong': { bg: 'var(--success-500)', fg: 'var(--color-text-inverse)' },
+  violet: { bg: 'var(--violet-100)', fg: 'var(--violet-700)' },
+  neutral: { bg: 'var(--color-surface-sunken)', fg: 'var(--color-text-secondary)' },
+};
+
+function StatusBadge({ status, label }) {
+  const entry = STATUS_MAP[status] || { label: label || status, tone: 'neutral' };
+  const s = TONE_STYLES[entry.tone] || TONE_STYLES.neutral;
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        padding: '0 var(--space-3)',
+        height: 22,
+        borderRadius: 'var(--radius-full)',
+        background: s.bg,
+        color: s.fg,
+        fontSize: 'var(--text-xs-size)',
+        fontWeight: 'var(--font-weight-medium)',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {label || entry.label}
+    </span>
+  );
+}
+
+const TAG_VARIANT_STYLES = {
+  new: { bg: 'var(--color-danger-subtle)', fg: 'var(--danger-700)', label: 'new' },
+  deleted: { bg: 'var(--color-surface-sunken)', fg: 'var(--color-text-tertiary)', label: '削除済み' },
+  neutral: { bg: 'var(--color-surface-sunken)', fg: 'var(--color-text-secondary)' },
+};
+
+function Tag({ variant = 'neutral', children }) {
+  const v = TAG_VARIANT_STYLES[variant] || TAG_VARIANT_STYLES.neutral;
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        padding: '0 var(--space-2)',
+        height: 18,
+        borderRadius: 'var(--radius-sm)',
+        background: v.bg,
+        color: v.fg,
+        fontSize: 10,
+        fontWeight: 'var(--font-weight-bold)',
+        letterSpacing: '0.02em',
+        textTransform: variant === 'new' ? 'uppercase' : 'none',
+      }}
+    >
+      {children || v.label}
+    </span>
+  );
+}
+
+function Table({ columns = [], rows = [], emptyMessage = '該当データなし' }) {
+  return (
+    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-sm-size)' }}>
+      <thead>
+        <tr>
+          {columns.map((col) => (
+            <th
+              key={col.key}
+              style={{
+                textAlign: col.align || 'left',
+                padding: 'var(--space-3) var(--space-4)',
+                borderBottom: '1px solid var(--color-border-strong)',
+                color: 'var(--color-text-secondary)',
+                fontWeight: 'var(--font-weight-medium)',
+                whiteSpace: 'nowrap',
+                background: 'var(--color-surface-sunken)',
+              }}
+            >
+              {col.label}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {rows.length === 0 ? (
+          <tr>
+            <td colSpan={columns.length} style={{ padding: 'var(--space-10)', textAlign: 'center', color: 'var(--color-text-tertiary)' }}>
+              {emptyMessage}
+            </td>
+          </tr>
+        ) : (
+          rows.map((row, i) => (
+            <tr key={row.id ?? i} style={{ borderBottom: '1px solid var(--color-border)' }}>
+              {columns.map((col) => (
+                <td key={col.key} style={{ padding: 'var(--space-3) var(--space-4)', textAlign: col.align || 'left', color: 'var(--color-text-primary)' }}>
+                  {col.render ? col.render(row) : row[col.key]}
+                </td>
+              ))}
+            </tr>
+          ))
+        )}
+      </tbody>
+    </table>
+  );
+}
+
+function Pagination({ page = 1, totalPages = 1, onChange }) {
+  const go = (p) => {
+    if (p < 1 || p > totalPages || p === page) return;
+    onChange && onChange(p);
+  };
+
+  const pages = [];
+  const start = Math.max(1, page - 2);
+  const end = Math.min(totalPages, start + 4);
+  for (let p = start; p <= end; p++) pages.push(p);
+
+  const btnStyle = (active) => ({
+    minWidth: 30,
+    height: 30,
+    padding: '0 var(--space-2)',
+    borderRadius: 'var(--radius-md)',
+    border: active ? '1px solid var(--color-primary)' : '1px solid var(--color-border)',
+    background: active ? 'var(--color-primary-subtle)' : 'var(--color-surface)',
+    color: active ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+    fontSize: 'var(--text-sm-size)',
+    fontWeight: active ? 'var(--font-weight-medium)' : 'var(--font-weight-regular)',
+    cursor: 'pointer',
+  });
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+      <button onClick={() => go(page - 1)} disabled={page === 1} style={{ ...btnStyle(false), opacity: page === 1 ? 0.4 : 1 }} aria-label="前へ">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M15 18l-6-6 6-6" />
+        </svg>
+      </button>
+      {pages.map((p) => (
+        <button key={p} onClick={() => go(p)} style={btnStyle(p === page)}>
+          {p}
+        </button>
+      ))}
+      <button onClick={() => go(page + 1)} disabled={page === totalPages} style={{ ...btnStyle(false), opacity: page === totalPages ? 0.4 : 1 }} aria-label="次へ">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M9 18l6-6-6-6" />
+        </svg>
+      </button>
+    </div>
+  );
+}
+
+window.DS = window.DS || {};
+Object.assign(window.DS, { AppHeader, GlobalNav, Card, Panel, Button, Field, Modal, Toast, StatusBadge, Tag, Table, Pagination });
+
+</script>
+<script type="text/babel" data-presets="react">
+function Shell({ tenantType = 'REQUESTER', tenantName = '株式会社サンプル物流', userName = '山田 太郎', unreadCount = 3, activeKey, onNavigate, children }) {
+  return (
+    <div style={{ minWidth: 1280, minHeight: '100%', display: 'flex', flexDirection: 'column', background: 'var(--color-bg-canvas)' }}>
+      <AppHeader tenantName={tenantName} userName={userName} unreadCount={unreadCount} onBellClick={() => onNavigate && onNavigate('notifications')} onLogoClick={() => onNavigate && onNavigate('dashboard')} />
+      <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+        <GlobalNav tenantType={tenantType} activeKey={activeKey} onNavigate={onNavigate} />
+        <main style={{ flex: 1, padding: 'var(--page-padding-y) var(--page-padding-x)', overflow: 'auto', position: 'relative' }}>
+          <div style={{ maxWidth: 'var(--content-max-width)' }}>{children}</div>
+        </main>
+      </div>
+    </div>
+  );
+}
+
+function PageHeading({ title, description, actions }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 'var(--space-6)' }}>
+      <div>
+        <h1 style={{ margin: 0, fontSize: 'var(--text-xl-size)', fontWeight: 'var(--font-weight-bold)', color: 'var(--color-text-primary)' }}>{title}</h1>
+        {description && <p style={{ margin: 'var(--space-1) 0 0', fontSize: 'var(--text-sm-size)', color: 'var(--color-text-secondary)' }}>{description}</p>}
+      </div>
+      {actions && <div style={{ display: 'flex', gap: 'var(--space-3)' }}>{actions}</div>}
+    </div>
+  );
+}
+
+
+window.UIKit = window.UIKit || {};
+Object.assign(window.UIKit, { Shell, PageHeading });
+
+</script>
+<script type="text/babel" data-presets="react">
+function AuthShell({ children, width = 400 }) {
+  return (
+    <div
+      style={{
+        minWidth: 1280,
+        minHeight: '100%',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'var(--color-bg-canvas)',
+        padding: 'var(--space-16) 0',
+      }}
+    >
+      <div style={{ width, background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-md)', padding: 'var(--space-8)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', justifyContent: 'center', marginBottom: 'var(--space-6)' }}>
+          <div style={{ width: 28, height: 28, borderRadius: 'var(--radius-md)', background: 'var(--color-primary)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 13 }}>配</div>
+          <span style={{ fontSize: 'var(--text-md-size)', fontWeight: 'var(--font-weight-bold)' }}>配送マッチング</span>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// SCR-001 ログイン
+function LoginScreen({ onNavigate }) {
+  return (
+    <AuthShell>
+      <h2 style={{ margin: '0 0 var(--space-5)', fontSize: 'var(--text-lg-size)', textAlign: 'center' }}>ログイン</h2>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+        <Field label="ログイン ID" required placeholder="login-id" />
+        <Field label="パスワード" type="password" required />
+        <Button variant="primary" size="lg" onClick={() => onNavigate && onNavigate('requester-dashboard')}>ログイン</Button>
+      </div>
+      <div style={{ marginTop: 'var(--space-5)', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', alignItems: 'center', fontSize: 'var(--text-sm-size)' }}>
+        <a href="#signup" onClick={(e) => { e.preventDefault(); onNavigate && onNavigate('signup'); }}>新規登録</a>
+        <a href="#reset" onClick={(e) => { e.preventDefault(); onNavigate && onNavigate('reset-request'); }}>パスワードをお忘れですか</a>
+      </div>
+    </AuthShell>
+  );
+}
+
+// SCR-002 企業アカウント登録
+function SignUpScreen({ onNavigate }) {
+  return (
+    <AuthShell width={480}>
+      <h2 style={{ margin: '0 0 var(--space-5)', fontSize: 'var(--text-lg-size)', textAlign: 'center' }}>企業アカウント登録</h2>
+
+      <div style={{ marginBottom: 'var(--space-5)' }}>
+        <div style={{ fontSize: 'var(--text-sm-size)', fontWeight: 'var(--font-weight-medium)', marginBottom: 'var(--space-2)' }}>企業種別</div>
+        <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+          <Button variant="primary" size="sm">配送依頼企業</Button>
+          <Button variant="secondary" size="sm">運送会社</Button>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+        <div style={{ fontSize: 'var(--text-sm-size)', fontWeight: 'var(--font-weight-bold)', color: 'var(--color-text-primary)', borderTop: '1px solid var(--color-border)', paddingTop: 'var(--space-4)' }}>企業共通項目</div>
+        <Field label="法人名" required />
+        <Field label="住所" required />
+        <Field label="会社電話番号" required />
+        <Field label="会社メールアドレス" required type="email" />
+        <Field label="支払方法" as="select" required options={[{ value: 'INVOICE', label: '請求書払い（月末締め翌月末払い）' }, { value: 'BANK_TRANSFER', label: '銀行振込' }]} />
+
+        <div style={{ fontSize: 'var(--text-sm-size)', fontWeight: 'var(--font-weight-bold)', color: 'var(--color-text-primary)', borderTop: '1px solid var(--color-border)', paddingTop: 'var(--space-4)' }}>初回ユーザー項目</div>
+        <Field label="ユーザー名（識別名）" required />
+        <Field label="ログイン ID" required />
+        <Field label="登録メールアドレス" required type="email" />
+        <Field label="ログイン用パスワード" type="password" required hint="最小8文字・英字+数字各1文字以上" />
+
+        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-2)', fontSize: 'var(--text-sm-size)', color: 'var(--color-text-secondary)' }}>
+          <input type="checkbox" style={{ marginTop: 3 }} />
+          利用規約・プライバシーポリシーに同意します
+        </label>
+
+        <Button variant="primary" size="lg" onClick={() => onNavigate && onNavigate('login')}>登録する</Button>
+        <Button variant="ghost" onClick={() => onNavigate && onNavigate('login')}>キャンセル / 戻る</Button>
+      </div>
+    </AuthShell>
+  );
+}
+
+// SCR-003 パスワードリセット申請
+function ResetRequestScreen({ onNavigate }) {
+  return (
+    <AuthShell>
+      <h2 style={{ margin: '0 0 var(--space-3)', fontSize: 'var(--text-lg-size)', textAlign: 'center' }}>パスワードリセット申請</h2>
+      <p style={{ fontSize: 'var(--text-sm-size)', color: 'var(--color-text-secondary)', textAlign: 'center', marginBottom: 'var(--space-5)' }}>
+        登録済みのメールアドレスを入力してください。パスワード再設定用のリンクをお送りします。
+      </p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+        <Field label="登録メールアドレス" required type="email" />
+        <Button variant="primary" size="lg">送信する</Button>
+      </div>
+      <div style={{ marginTop: 'var(--space-5)', textAlign: 'center', fontSize: 'var(--text-sm-size)' }}>
+        <a href="#login" onClick={(e) => { e.preventDefault(); onNavigate && onNavigate('login'); }}>ログイン画面へ戻る</a>
+      </div>
+    </AuthShell>
+  );
+}
+
+// SCR-004 パスワードリセット再設定
+function ResetConfirmScreen({ onNavigate }) {
+  return (
+    <AuthShell>
+      <h2 style={{ margin: '0 0 var(--space-5)', fontSize: 'var(--text-lg-size)', textAlign: 'center' }}>新しいパスワードの設定</h2>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+        <Field label="新パスワード" type="password" required hint="最小8文字・英字+数字各1文字以上" />
+        <Button variant="primary" size="lg" onClick={() => onNavigate && onNavigate('login')}>設定する</Button>
+      </div>
+      <p style={{ marginTop: 'var(--space-5)', fontSize: 'var(--text-xs-size)', color: 'var(--color-text-tertiary)', textAlign: 'center' }}>
+        リンクの有効期限が切れている場合は<a href="#reset" onClick={(e) => { e.preventDefault(); onNavigate && onNavigate('reset-request'); }}>再度申請</a>してください。
+      </p>
+    </AuthShell>
+  );
+}
+
+
+window.UIKit = window.UIKit || {};
+Object.assign(window.UIKit, { LoginScreen, SignUpScreen, ResetRequestScreen, ResetConfirmScreen });
+
+</script>
+<script type="text/babel" data-presets="react">
+// SCR-005 ユーザー追加（両ロール共通）
+function UserAddScreen({ tenantType = 'REQUESTER', onNavigate }) {
+  return (
+    <Shell tenantType={tenantType} activeKey="users" onNavigate={onNavigate}>
+      <PageHeading title="ユーザー追加" description="同一テナント内に新しいユーザーを追加します（権限は既存ユーザーと同一です）。" />
+      <Card>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', maxWidth: 420 }}>
+          <Field label="ユーザー名（識別名）" required />
+          <Field label="ログイン ID" required hint="テナント内で一意である必要があります" />
+          <Field label="登録メールアドレス" required type="email" hint="システム全体で一意である必要があります" />
+          <Field label="ログイン用パスワード" type="password" required />
+          <div style={{ display: 'flex', gap: 'var(--space-3)', marginTop: 'var(--space-2)' }}>
+            <Button variant="primary" onClick={() => onNavigate && onNavigate('dashboard')}>追加する</Button>
+            <Button variant="secondary" onClick={() => onNavigate && onNavigate('dashboard')}>キャンセル</Button>
+          </div>
+        </div>
+      </Card>
+    </Shell>
+  );
+}
+
+// SCR-012 通知一覧（両ロール共通）
+const NOTIFICATIONS = [
+  { id: 1, kind: '成約', body: 'JOB-00123「東京→大阪 家具輸送」が成約しました。', read: false, date: '2026/07/14 09:12' },
+  { id: 2, kind: 'message', body: '新着メッセージがあります。', read: false, date: '2026/07/14 08:40' },
+  { id: 3, kind: 'message', body: '新着メッセージがあります。', read: true, date: '2026/07/13 17:05' },
+  { id: 4, kind: '成約', body: 'JOB-00098「名古屋→福岡 精密機器輸送」が成約しました。', read: true, date: '2026/07/12 11:30' },
+];
+
+function NotificationsScreen({ tenantType = 'REQUESTER', onNavigate }) {
+  return (
+    <Shell tenantType={tenantType} activeKey="dashboard" onNavigate={onNavigate}>
+      <PageHeading title="通知一覧" />
+      <Card padded={false}>
+        <div>
+          {NOTIFICATIONS.map((n) => (
+            <div
+              key={n.id}
+              onClick={() => onNavigate && onNavigate(tenantType === 'REQUESTER' ? 'requester-job-detail' : 'carrier-job-detail')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 'var(--space-4)',
+                padding: 'var(--space-4) var(--space-5)',
+                borderBottom: '1px solid var(--color-border)',
+                background: n.read ? 'transparent' : 'var(--color-primary-subtle)',
+                cursor: 'pointer',
+              }}
+            >
+              <span
+                style={{
+                  flexShrink: 0,
+                  fontSize: 'var(--text-xs-size)',
+                  fontWeight: 'var(--font-weight-bold)',
+                  padding: '2px var(--space-2)',
+                  borderRadius: 'var(--radius-sm)',
+                  background: n.kind === '成約' ? 'var(--color-success-subtle)' : 'var(--color-surface-sunken)',
+                  color: n.kind === '成約' ? 'var(--success-700)' : 'var(--color-text-secondary)',
+                }}
+              >
+                {n.kind === '成約' ? '成約' : 'メッセージ'}
+              </span>
+              <span style={{ flex: 1, fontSize: 'var(--text-sm-size)', color: 'var(--color-text-primary)', fontWeight: n.read ? 'var(--font-weight-regular)' : 'var(--font-weight-medium)' }}>{n.body}</span>
+              <span style={{ fontSize: 'var(--text-xs-size)', color: 'var(--color-text-tertiary)' }}>{n.date}</span>
+              {!n.read && <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--color-primary)' }} />}
+            </div>
+          ))}
+        </div>
+      </Card>
+      <div style={{ marginTop: 'var(--space-5)', display: 'flex', justifyContent: 'flex-end' }}>
+        <Pagination page={1} totalPages={3} />
+      </div>
+    </Shell>
+  );
+}
+
+// SCR-019 工事中
+function UnderConstructionScreen({ tenantType = 'REQUESTER', onNavigate }) {
+  return (
+    <Shell tenantType={tenantType} onNavigate={onNavigate}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 'var(--space-20) 0', textAlign: 'center' }}>
+        <div style={{ width: 56, height: 56, borderRadius: 'var(--radius-lg)', background: 'var(--color-surface-sunken)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 'var(--space-5)' }}>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-tertiary)" strokeWidth="2">
+            <path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+          </svg>
+        </div>
+        <h2 style={{ margin: '0 0 var(--space-2)', fontSize: 'var(--text-lg-size)' }}>このページは準備中です</h2>
+        <p style={{ margin: '0 0 var(--space-6)', fontSize: 'var(--text-sm-size)', color: 'var(--color-text-secondary)', maxWidth: 420 }}>
+          お問い合わせフォームは現在準備中です。不具合等のご報告は、担当営業までご連絡ください。
+        </p>
+        <Button variant="secondary" onClick={() => onNavigate && onNavigate('dashboard')}>戻る</Button>
+      </div>
+    </Shell>
+  );
+}
+
+
+window.UIKit = window.UIKit || {};
+Object.assign(window.UIKit, { UserAddScreen, NotificationsScreen, UnderConstructionScreen });
+
+</script>
+<script type="text/babel" data-presets="react">
+// SCR-006 配送依頼企業ダッシュボード
+const REQ_KPI = [
+  { key: 'ST001', label: '募集中', count: 4, newCount: 2 },
+  { key: 'ST002', label: '交渉中', count: 2, newCount: 1 },
+  { key: 'ST003', label: '成約済', count: 1, newCount: 0 },
+  { key: 'ST004', label: '運送中', count: 1, newCount: 0 },
+  { key: 'ST005', label: '完了', count: 3, newCount: 0 },
+  { key: 'ST006', label: '評価済', count: 8, newCount: 0 },
+];
+
+function RequesterDashboardScreen({ onNavigate }) {
+  return (
+    <Shell tenantType="REQUESTER" activeKey="dashboard" onNavigate={onNavigate}>
+      <PageHeading
+        title="ダッシュボード"
+        description="自社案件のステータス別状況です。"
+        actions={<Button variant="primary" onClick={() => onNavigate && onNavigate('requester-job-new')}>案件登録</Button>}
+      />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 'var(--space-4)', marginBottom: 'var(--space-8)' }}>
+        {REQ_KPI.map((k) => (
+          <div key={k.key} onClick={() => onNavigate && onNavigate('requester-job-list')} style={{ cursor: 'pointer' }}>
+            <Card>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-2)' }}>
+                <StatusBadge status={k.key} />
+                {k.newCount > 0 && <Tag variant="new">new {k.newCount}</Tag>}
+              </div>
+              <div style={{ fontSize: 'var(--text-2xl-size)', fontWeight: 'var(--font-weight-bold)', color: 'var(--color-text-primary)' }}>{k.count}</div>
+              <div style={{ fontSize: 'var(--text-xs-size)', color: 'var(--color-text-tertiary)' }}>件</div>
+            </Card>
+          </div>
+        ))}
+      </div>
+      <Panel title="主要な導線">
+        <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+          <Button variant="secondary" onClick={() => onNavigate && onNavigate('requester-job-list')}>案件一覧</Button>
+          <Button variant="secondary" onClick={() => onNavigate && onNavigate('users')}>ユーザー追加</Button>
+          <Button variant="secondary" onClick={() => onNavigate && onNavigate('requester-history')}>取引履歴</Button>
+          <Button variant="secondary" onClick={() => onNavigate && onNavigate('notifications')}>通知一覧</Button>
+        </div>
+      </Panel>
+    </Shell>
+  );
+}
+
+// SCR-007 案件登録
+const ATTRIBUTE_OPTIONS = [
+  { value: 'dangerous', label: '危険物' },
+  { value: 'refrigerated', label: '要冷蔵' },
+  { value: 'frozen', label: '要冷凍' },
+  { value: 'fragile', label: '割れ物' },
+];
+
+function JobRegisterScreen({ onNavigate }) {
+  const [attributes, setAttributes] = useState([]);
+  const toggleAttribute = (value) => {
+    setAttributes((prev) => (prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]));
+  };
+  return (
+    <Shell tenantType="REQUESTER" activeKey="job-new" onNavigate={onNavigate}>
+      <PageHeading title="案件登録" description="積荷情報を入力し、案件を「募集中」として登録します。" />
+      <Card>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)', maxWidth: 640 }}>
+          <div style={{ fontSize: 'var(--text-sm-size)', fontWeight: 'var(--font-weight-bold)' }}>場所・時刻</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
+            <Field label="積地（from）" required placeholder="東京都江東区…" />
+            <Field label="積込希望日時（from）" required type="datetime-local" />
+            <Field label="卸地（to）" required placeholder="大阪府大阪市…" />
+            <Field label="卸下希望日時（to）" required type="datetime-local" />
+          </div>
+
+          <div style={{ fontSize: 'var(--text-sm-size)', fontWeight: 'var(--font-weight-bold)', borderTop: '1px solid var(--color-border)', paddingTop: 'var(--space-4)' }}>積荷情報</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
+            <Field label="容積（m3）" required type="number" />
+            <Field label="物品種別" as="select" required options={[{ value: 'GENERAL_CARGO', label: '一般貨物' }, { value: 'PRECISION', label: '精密機器' }, { value: 'FOOD', label: '食品（冷蔵・冷凍）' }, { value: 'HAZARDOUS', label: '危険物' }, { value: 'OTHER', label: 'その他' }]} />
+            <Field label="希望トラック種別" as="select" required options={[{ value: 'light', label: '軽トラック' }, { value: '2t', label: '2tトラック' }, { value: '4t', label: '4tトラック' }, { value: '10t', label: '10tトラック' }, { value: 'trailer', label: 'トレーラー' }]} />
+            <div>
+              <div style={{ fontSize: 'var(--text-sm-size)', fontWeight: 'var(--font-weight-medium)', marginBottom: 'var(--space-2)' }}>属性（複数選択可）</div>
+              <div style={{ display: 'flex', gap: 'var(--space-4)', flexWrap: 'wrap' }}>
+                {ATTRIBUTE_OPTIONS.map((opt) => (
+                  <label key={opt.value} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', fontSize: 'var(--text-sm-size)', color: 'var(--color-text-primary)', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={attributes.includes(opt.value)} onChange={() => toggleAttribute(opt.value)} />
+                    {opt.label}
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ fontSize: 'var(--text-sm-size)', fontWeight: 'var(--font-weight-bold)', borderTop: '1px solid var(--color-border)', paddingTop: 'var(--space-4)' }}>金額・備考</div>
+          <Field label="希望金額（円・税別）" required type="number" placeholder="120000" />
+          <Field label="備考" as="textarea" />
+
+          <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
+            <Button variant="primary" onClick={() => onNavigate && onNavigate('requester-job-list')}>登録する</Button>
+            <Button variant="secondary" onClick={() => onNavigate && onNavigate('dashboard')}>キャンセル</Button>
+          </div>
+        </div>
+      </Card>
+    </Shell>
+  );
+}
+
+// SCR-008 案件一覧（配送依頼企業）
+const REQ_OPEN_JOBS = [
+  { id: 'JOB-00131', title: '東京→大阪 家具輸送', status: 'ST001', isNew: true, updated: '2026/07/14' },
+  { id: 'JOB-00130', title: '横浜→仙台 雑貨輸送', status: 'ST001', isNew: false, updated: '2026/07/12' },
+];
+const REQ_NEGOTIATING_JOBS = [
+  { id: 'JOB-00124', title: '名古屋→福岡 精密機器輸送', status: 'ST002', isNew: true, updated: '2026/07/14' },
+  { id: 'JOB-00123', title: '東京→大阪 家具輸送', status: 'ST003', isNew: false, updated: '2026/07/10' },
+  { id: 'JOB-00110', title: '仙台→札幌 食品輸送', status: 'ST006', isNew: false, updated: '2026/06/30' },
+];
+
+function JobListScreen({ onNavigate }) {
+  const cols = [
+    { key: 'id', label: '案件ID' },
+    { key: 'title', label: '案件名', render: (r) => <span>{r.title} {r.isNew && <Tag variant="new" />}</span> },
+    { key: 'status', label: 'ステータス', render: (r) => <StatusBadge status={r.status} /> },
+    { key: 'updated', label: '更新日' },
+  ];
+  return (
+    <Shell tenantType="REQUESTER" activeKey="job-list" onNavigate={onNavigate}>
+      <PageHeading title="案件一覧" actions={<Button variant="primary" onClick={() => onNavigate && onNavigate('requester-job-new')}>案件登録</Button>} />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-8)' }}>
+        <div>
+          <h3 style={{ fontSize: 'var(--text-md-size)', margin: '0 0 var(--space-3)' }}>募集中（未受注）</h3>
+          <Card padded={false}>
+            <div onClick={() => onNavigate && onNavigate('requester-job-detail')} style={{ cursor: 'pointer' }}>
+              <Table columns={cols} rows={REQ_OPEN_JOBS} />
+            </div>
+          </Card>
+        </div>
+        <div>
+          <h3 style={{ fontSize: 'var(--text-md-size)', margin: '0 0 var(--space-3)' }}>交渉中・済</h3>
+          <Card padded={false}>
+            <div onClick={() => onNavigate && onNavigate('requester-job-detail')} style={{ cursor: 'pointer' }}>
+              <Table columns={cols} rows={REQ_NEGOTIATING_JOBS} />
+            </div>
+          </Card>
+        </div>
+      </div>
+      <div style={{ marginTop: 'var(--space-5)', display: 'flex', justifyContent: 'flex-end' }}>
+        <Pagination page={1} totalPages={4} />
+      </div>
+    </Shell>
+  );
+}
+
+// SCR-009 案件詳細（配送依頼企業）+ SCR-009-01 モーダル
+const BIDS = [
+  { id: 1, company: '株式会社北陸運送', amount: '¥118,000', contact: '田中 一郎 / 090-xxxx-1234', email: 'tanaka@hokuriku-unso.example.jp', status: 'ST101', isSet: true },
+  { id: 2, company: '関東トランスポート株式会社', amount: '¥125,000', contact: '佐藤 花子 / 090-xxxx-5678', email: 'sato@kanto-transport.example.jp', status: 'ST101', isSet: false },
+];
+
+function RequesterJobDetailScreen({ onNavigate, initialModalOpen = false }) {
+  const [modalOpen, setModalOpen] = useState(initialModalOpen);
+  const [toast, setToast] = useState(null);
+  return (
+    <Shell tenantType="REQUESTER" activeKey="job-list" onNavigate={onNavigate}>
+      <PageHeading
+        title="JOB-00124 名古屋→福岡 精密機器輸送"
+        description={<span style={{ display: 'inline-flex', gap: 'var(--space-2)', alignItems: 'center' }}><StatusBadge status="ST002" /></span>}
+        actions={
+          <>
+            <Button variant="secondary" onClick={() => setToast('現在のステータスでは更新・削除できません。')}>編集</Button>
+            <Button variant="secondary" onClick={() => setToast('最終条件の入力に誤りがあります。内容を確認してください。')}>最終条件を提示</Button>
+            <Button variant="secondary" disabled onClick={() => setToast('運送会社の完了報告が完了していないため、完了確認はできません。')}>完了確認</Button>
+            <Button variant="secondary" onClick={() => onNavigate && onNavigate('requester-job-list')}>一覧へ戻る</Button>
+            <Button variant="danger" onClick={() => setToast('現在のステータスでは更新・削除できません。')}>削除</Button>
+          </>
+        }
+      />
+
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 'var(--space-6)' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
+          <Card title="案件基本情報">
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)', fontSize: 'var(--text-sm-size)' }}>
+              <div><span style={{ color: 'var(--color-text-tertiary)' }}>積地</span><div>名古屋市港区（2026/07/20 09:00）</div></div>
+              <div><span style={{ color: 'var(--color-text-tertiary)' }}>卸地</span><div>福岡市博多区（2026/07/21 14:00）</div></div>
+              <div><span style={{ color: 'var(--color-text-tertiary)' }}>容積</span><div>18 m3</div></div>
+              <div><span style={{ color: 'var(--color-text-tertiary)' }}>物品種別 / トラック種別</span><div>精密機器 / 4tトラック</div></div>
+              <div><span style={{ color: 'var(--color-text-tertiary)' }}>属性</span><div>割れ物</div></div>
+              <div><span style={{ color: 'var(--color-text-tertiary)' }}>希望金額</span><div>¥120,000（税別）</div></div>
+            </div>
+          </Card>
+
+          <Card title="応募一覧">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+              {BIDS.map((b) => (
+                <div
+                  key={b.id}
+                  onClick={() => b.isSet && setModalOpen(true)}
+                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 'var(--space-3) var(--space-4)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', cursor: b.isSet ? 'pointer' : 'default' }}
+                >
+                  <div>
+                    <div style={{ fontSize: 'var(--text-sm-size)', fontWeight: 'var(--font-weight-medium)' }}>{b.company} {b.isSet && <Tag variant="neutral">セット応募</Tag>}</div>
+                    <div style={{ fontSize: 'var(--text-xs-size)', color: 'var(--color-text-tertiary)' }}>{b.contact} / {b.email}</div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+                    <StatusBadge status={b.status} />
+                    <div style={{ fontSize: 'var(--text-sm-size)', fontWeight: 'var(--font-weight-bold)' }}>{b.amount}</div>
+                    <Button variant="primary" size="sm">合意する</Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          <Card title="連絡履歴">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', fontSize: 'var(--text-sm-size)' }}>
+              <div><b>山田 太郎</b> <span style={{ color: 'var(--color-text-tertiary)', fontSize: 'var(--text-xs-size)' }}>2026/07/13 10:00</span><div>積込時間の前後は可能でしょうか。</div></div>
+              <div><b>田中 一郎（株式会社北陸運送）</b> <span style={{ color: 'var(--color-text-tertiary)', fontSize: 'var(--text-xs-size)' }}>2026/07/13 11:20</span><div>1時間程度であれば対応可能です。</div></div>
+            </div>
+            <div style={{ marginTop: 'var(--space-4)' }}><Field as="textarea" placeholder="メッセージを入力" /></div>
+            <Button variant="primary" size="sm">送信する</Button>
+          </Card>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
+          <Panel title="最終条件提示状況">
+            <div style={{ fontSize: 'var(--text-sm-size)', color: 'var(--color-text-secondary)' }}>現在提示中の最終条件はありません。</div>
+          </Panel>
+          <Panel title="運送ステータス">
+            <div style={{ fontSize: 'var(--text-sm-size)', color: 'var(--color-text-tertiary)' }}>運送開始報告: 未実施</div>
+          </Panel>
+        </div>
+      </div>
+
+      {modalOpen && (
+        <Modal
+          title="セット応募の確認"
+          onClose={() => setModalOpen(false)}
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setModalOpen(false)}>キャンセル</Button>
+              <Button variant="primary" onClick={() => setModalOpen(false)}>一括承認する</Button>
+            </>
+          }
+        >
+          <p style={{ marginTop: 0, fontSize: 'var(--text-sm-size)' }}>このセット応募には以下の案件が含まれます。<b>案件ごとの個別合意はできません。</b>一括で承認するとセット内全案件が同時に成約します。</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+            {[{ id: 'JOB-00124', route: '名古屋→福岡', amount: '¥118,000' }, { id: 'JOB-00126', route: '福岡→熊本', amount: '¥42,000' }].map((j) => (
+              <div key={j.id} style={{ display: 'flex', justifyContent: 'space-between', padding: 'var(--space-2) var(--space-3)', background: 'var(--color-surface-sunken)', borderRadius: 'var(--radius-md)', fontSize: 'var(--text-sm-size)' }}>
+                <span>{j.id}（{j.route}）</span><span>{j.amount}</span>
+              </div>
+            ))}
+          </div>
+        </Modal>
+      )}
+
+      {toast && <Toast tone="error" message={toast} onClose={() => setToast(null)} />}
+    </Shell>
+  );
+}
+
+// SCR-010 評価登録（配送依頼企業）
+function RequesterRatingScreen({ onNavigate }) {
+  return (
+    <Shell tenantType="REQUESTER" onNavigate={onNavigate}>
+      <PageHeading title="評価登録" description="完了した案件について、運送会社を評価します。" />
+      <Card>
+        <div style={{ maxWidth: 480, display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
+          <div style={{ fontSize: 'var(--text-sm-size)', color: 'var(--color-text-secondary)' }}>
+            JOB-00098「名古屋→福岡 精密機器輸送」／相手企業: 株式会社北陸運送
+          </div>
+          <div>
+            <div style={{ fontSize: 'var(--text-sm-size)', fontWeight: 'var(--font-weight-medium)', marginBottom: 'var(--space-2)' }}>評価 <span style={{ color: 'var(--color-danger)' }}>必須</span></div>
+            <div style={{ display: 'flex', gap: 'var(--space-1)', fontSize: 28, color: 'var(--warning-500)' }}>★★★★☆</div>
+          </div>
+          <Field label="コメント（任意）" as="textarea" />
+          <Button variant="primary" onClick={() => onNavigate && onNavigate('requester-job-detail')}>登録する</Button>
+        </div>
+      </Card>
+    </Shell>
+  );
+}
+
+// SCR-011 取引履歴一覧（配送依頼企業）
+const REQ_HISTORY = [
+  { id: 'JOB-00098', title: '名古屋→福岡 精密機器輸送', status: 'ST006', date: '2026/06/28' },
+  { id: 'JOB-00087', title: '東京→仙台 建材輸送', status: 'ST006', date: '2026/06/10' },
+  { id: 'JOB-00123', title: '東京→大阪 家具輸送', status: 'ST004', date: '2026/07/10' },
+];
+
+function RequesterHistoryScreen({ onNavigate }) {
+  return (
+    <Shell tenantType="REQUESTER" activeKey="history" onNavigate={onNavigate}>
+      <PageHeading title="取引履歴一覧" description="成約済〜評価済の過去案件を表示します。" />
+      <Card padded={false}>
+        <div onClick={() => onNavigate && onNavigate('requester-job-detail')} style={{ cursor: 'pointer' }}>
+          <Table
+            columns={[
+              { key: 'id', label: '案件ID' },
+              { key: 'title', label: '案件名' },
+              { key: 'status', label: 'ステータス', render: (r) => <StatusBadge status={r.status} /> },
+              { key: 'date', label: '成約日' },
+            ]}
+            rows={REQ_HISTORY}
+            emptyMessage="取引履歴がありません"
+          />
+        </div>
+      </Card>
+      <div style={{ marginTop: 'var(--space-5)', display: 'flex', justifyContent: 'flex-end' }}>
+        <Pagination page={1} totalPages={2} />
+      </div>
+    </Shell>
+  );
+}
+
+
+window.UIKit = window.UIKit || {};
+Object.assign(window.UIKit, { RequesterDashboardScreen, JobRegisterScreen, JobListScreen, RequesterJobDetailScreen, RequesterRatingScreen, RequesterHistoryScreen });
+
+</script>
+<script type="text/babel" data-presets="react">
+// SCR-013 運送会社ダッシュボード
+const CAR_KPI = [
+  { key: 'ST001', label: '募集中案件（全体公開）', count: 42, newCount: 6 },
+  { key: 'ST101', label: '応募中', count: 5, newCount: 1 },
+  { key: 'ST102', label: '成約', count: 2, newCount: 0 },
+  { key: 'ST103', label: 'クローズ', count: 9, newCount: 0 },
+];
+
+function CarrierDashboardScreen({ onNavigate }) {
+  return (
+    <Shell tenantType="CARRIER" activeKey="dashboard" onNavigate={onNavigate}>
+      <PageHeading title="ダッシュボード" description="募集中案件と自社の応募状況です。" />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--space-4)', marginBottom: 'var(--space-8)' }}>
+        {CAR_KPI.map((k) => (
+          <div key={k.key} onClick={() => onNavigate && onNavigate(k.key === 'ST001' ? 'carrier-job-open' : 'carrier-job-negotiating')} style={{ cursor: 'pointer' }}>
+            <Card>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-2)' }}>
+                <StatusBadge status={k.key} />
+                {k.newCount > 0 && <Tag variant="new">new {k.newCount}</Tag>}
+              </div>
+              <div style={{ fontSize: 'var(--text-2xl-size)', fontWeight: 'var(--font-weight-bold)' }}>{k.count}</div>
+              <div style={{ fontSize: 'var(--text-xs-size)', color: 'var(--color-text-tertiary)' }}>件</div>
+            </Card>
+          </div>
+        ))}
+      </div>
+      <Panel title="主要な導線">
+        <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+          <Button variant="secondary" onClick={() => onNavigate && onNavigate('carrier-job-open')}>募集中案件一覧</Button>
+          <Button variant="secondary" onClick={() => onNavigate && onNavigate('carrier-job-negotiating')}>交渉中・済一覧</Button>
+          <Button variant="secondary" onClick={() => onNavigate && onNavigate('users')}>ユーザー追加</Button>
+          <Button variant="secondary" onClick={() => onNavigate && onNavigate('carrier-history')}>取引履歴</Button>
+        </div>
+      </Panel>
+    </Shell>
+  );
+}
+
+// SCR-014 募集中案件一覧（運送会社）
+const CAR_OPEN_JOBS = [
+  { id: 'JOB-00131', title: '東京→大阪 家具輸送', requester: '株式会社サンプル物流', bids: 3, deadline: '2026/07/19 23:00', isNew: true, closed: false },
+  { id: 'JOB-00132', title: '大阪→広島 医薬品輸送', requester: '関西物流株式会社', bids: 1, deadline: '2026/07/15 10:00', isNew: false, closed: false },
+  { id: 'JOB-00120', title: '福岡→熊本 建材輸送', requester: '株式会社サンプル物流', bids: 20, deadline: '2026/07/16 08:00', isNew: false, closed: true },
+];
+
+function CarrierJobOpenListScreen({ onNavigate }) {
+  const [selected, setSelected] = useState(new Set());
+  return (
+    <Shell tenantType="CARRIER" activeKey="job-open" onNavigate={onNavigate}>
+      <PageHeading title="募集中案件一覧" description="全テナントに公開された募集中案件です。" />
+      <Panel title="絞り込み条件">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--space-4)', alignItems: 'end' }}>
+          <Field label="積地" placeholder="例: 東京" />
+          <Field label="卸地" placeholder="例: 大阪" />
+          <Field label="時間帯（下限〜上限）" placeholder="2026/07/15 〜 2026/07/20" />
+          <Field label="並び替え" as="select" options={[{ value: 'new', label: '新着順' }, { value: 'deadline', label: '締切が近い順' }]} />
+        </div>
+      </Panel>
+      <div style={{ height: 'var(--space-5)' }} />
+      <Card padded={false}>
+        <Table
+          columns={[
+            { key: 'id', label: '案件ID', render: (r) => <span onClick={() => onNavigate && onNavigate('carrier-job-detail')} style={{ cursor: 'pointer', color: 'var(--color-primary)' }}>{r.id}</span> },
+            { key: 'title', label: '案件名', render: (r) => <span>{r.title} {r.isNew && <Tag variant="new" />}</span> },
+            { key: 'requester', label: '配送依頼企業' },
+            { key: 'bids', label: '応募数', align: 'right' },
+            { key: 'deadline', label: '応募締切' },
+            {
+              key: 'action',
+              label: '',
+              render: (r) => (
+                <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                  <Button size="sm" variant="secondary" disabled={r.closed}>{r.closed ? '締切済' : '応募する'}</Button>
+                </div>
+              ),
+            },
+          ]}
+          rows={CAR_OPEN_JOBS}
+        />
+      </Card>
+      <div style={{ marginTop: 'var(--space-4)' }}>
+        <Button variant="primary" size="sm">セット応募</Button>
+      </div>
+      <div style={{ marginTop: 'var(--space-5)', display: 'flex', justifyContent: 'flex-end' }}>
+        <Pagination page={1} totalPages={6} />
+      </div>
+    </Shell>
+  );
+}
+
+// SCR-015 案件詳細（運送会社）+ SCR-015-01 モーダル
+function CarrierJobDetailScreen({ onNavigate, initialModalOpen = false }) {
+  const [modalOpen, setModalOpen] = useState(initialModalOpen);
+  return (
+    <Shell tenantType="CARRIER" activeKey="job-open" onNavigate={onNavigate}>
+      <PageHeading
+        title="JOB-00131 東京→大阪 家具輸送"
+        description={<StatusBadge status="ST001" />}
+        actions={
+          <>
+            <Button variant="secondary" onClick={() => setModalOpen(true)}>セット応募</Button>
+            <Button variant="secondary" onClick={() => onNavigate && onNavigate('carrier-job-open')}>一覧へ戻る</Button>
+          </>
+        }
+      />
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 'var(--space-6)' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
+          <Card title="案件基本情報">
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)', fontSize: 'var(--text-sm-size)' }}>
+              <div><span style={{ color: 'var(--color-text-tertiary)' }}>積地</span><div>東京都江東区（2026/07/20 09:00）</div></div>
+              <div><span style={{ color: 'var(--color-text-tertiary)' }}>卸地</span><div>大阪府大阪市（2026/07/21 12:00）</div></div>
+              <div><span style={{ color: 'var(--color-text-tertiary)' }}>容積 / トラック種別</span><div>12 m3 / 2tトラック</div></div>
+              <div><span style={{ color: 'var(--color-text-tertiary)' }}>希望金額</span><div>¥95,000（税別）</div></div>
+            </div>
+          </Card>
+
+          <Card title="配送依頼企業情報">
+            <div style={{ fontSize: 'var(--text-sm-size)', display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
+              <div>株式会社サンプル物流</div>
+              <div style={{ color: 'var(--color-text-secondary)' }}>会社電話番号: 03-xxxx-0001</div>
+              <div style={{ color: 'var(--color-text-secondary)' }}>会社メーリスアドレス: contact@sample-logistics.example.jp</div>
+              <div style={{ color: 'var(--color-text-tertiary)', fontSize: 'var(--text-xs-size)', marginTop: 'var(--space-1)' }}>個人担当者の連絡先は成約後に表示されます。</div>
+            </div>
+          </Card>
+
+          <Card title="競合状況">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', fontSize: 'var(--text-sm-size)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>応募A</span><span style={{ color: 'var(--color-text-tertiary)' }}>金額非公開</span></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>応募B</span><span style={{ color: 'var(--color-text-tertiary)' }}>金額非公開</span></div>
+            </div>
+          </Card>
+
+          <Card title="自社応募">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', maxWidth: 320 }}>
+              <Field label="応募金額（円・税別）" type="number" placeholder="95000" />
+              <Button variant="primary">応募する</Button>
+            </div>
+          </Card>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
+          <Panel title="最終条件提示状況"><div style={{ fontSize: 'var(--text-sm-size)', color: 'var(--color-text-secondary)' }}>現在提示中の最終条件はありません。</div></Panel>
+          <Panel title="運送ステータス"><div style={{ fontSize: 'var(--text-sm-size)', color: 'var(--color-text-tertiary)' }}>運送開始報告: 未実施</div></Panel>
+        </div>
+      </div>
+
+      {modalOpen && (
+        <Modal
+          title="セット応募の選択"
+          onClose={() => setModalOpen(false)}
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setModalOpen(false)}>キャンセル</Button>
+              <Button variant="primary" onClick={() => setModalOpen(false)}>セット応募として登録</Button>
+            </>
+          }
+        >
+          <p style={{ marginTop: 0, fontSize: 'var(--text-sm-size)' }}>起動元案件と同じ配送依頼企業（株式会社サンプル物流）の募集中・交渉中案件のみ選択できます。</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+            {[{ id: 'JOB-00131', route: '東京→大阪', current: true }, { id: 'JOB-00133', route: '大阪→神戸' }].map((j) => (
+              <label key={j.id} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', padding: 'var(--space-3)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', fontSize: 'var(--text-sm-size)' }}>
+                <input type="checkbox" defaultChecked={j.current} disabled={j.current} />
+                <span style={{ flex: 1 }}>{j.id}（{j.route}）</span>
+                <Field placeholder="応募金額" type="number" />
+              </label>
+            ))}
+          </div>
+        </Modal>
+      )}
+    </Shell>
+  );
+}
+
+// SCR-016 交渉中・済一覧（運送会社）
+const MY_BIDS = [
+  { id: 'BID-501', job: 'JOB-00124 名古屋→福岡 精密機器輸送', status: 'ST101' },
+  { id: 'BID-498', job: 'JOB-00098 名古屋→福岡 精密機器輸送', status: 'ST102' },
+  { id: 'BID-480', job: 'JOB-00088 大阪→広島 医薬品輸送', status: 'ST103' },
+  { id: 'BID-479', job: 'JOB-00087 福岡→熊本 建材輸送', status: 'ST104' },
+];
+
+function CarrierNegotiatingListScreen({ onNavigate }) {
+  return (
+    <Shell tenantType="CARRIER" activeKey="job-negotiating" onNavigate={onNavigate}>
+      <PageHeading title="交渉中・済一覧" description="自社が応募した案件の状況です。" />
+      <Card padded={false}>
+        <div onClick={() => onNavigate && onNavigate('carrier-job-detail')} style={{ cursor: 'pointer' }}>
+          <Table
+            columns={[
+              { key: 'id', label: '応募ID' },
+              { key: 'job', label: '案件' },
+              { key: 'status', label: '応募ステータス', render: (r) => <StatusBadge status={r.status} /> },
+            ]}
+            rows={MY_BIDS}
+          />
+        </div>
+      </Card>
+      <div style={{ marginTop: 'var(--space-5)', display: 'flex', justifyContent: 'flex-end' }}>
+        <Pagination page={1} totalPages={3} />
+      </div>
+    </Shell>
+  );
+}
+
+// SCR-017 評価登録（運送会社）
+function CarrierRatingScreen({ onNavigate }) {
+  return (
+    <Shell tenantType="CARRIER" onNavigate={onNavigate}>
+      <PageHeading title="評価登録" description="完了した案件について、配送依頼企業を評価します。" />
+      <Card>
+        <div style={{ maxWidth: 480, display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
+          <div style={{ fontSize: 'var(--text-sm-size)', color: 'var(--color-text-secondary)' }}>
+            JOB-00098「名古屋→福岡 精密機器輸送」／相手企業: 株式会社サンプル物流
+          </div>
+          <div>
+            <div style={{ fontSize: 'var(--text-sm-size)', fontWeight: 'var(--font-weight-medium)', marginBottom: 'var(--space-2)' }}>評価 <span style={{ color: 'var(--color-danger)' }}>必須</span></div>
+            <div style={{ display: 'flex', gap: 'var(--space-1)', fontSize: 28, color: 'var(--warning-500)' }}>★★★★★</div>
+          </div>
+          <Field label="コメント（任意）" as="textarea" />
+          <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
+            <Button variant="primary" onClick={() => onNavigate && onNavigate('carrier-job-detail')}>登録する</Button>
+            <Button variant="ghost" onClick={() => onNavigate && onNavigate('carrier-history')}>取引履歴へ</Button>
+          </div>
+        </div>
+      </Card>
+    </Shell>
+  );
+}
+
+// SCR-018 取引履歴一覧（運送会社）
+const CAR_HISTORY = [
+  { id: 'JOB-00098', title: '名古屋→福岡 精密機器輸送', status: 'ST006', date: '2026/06/28' },
+  { id: 'JOB-00088', title: '大阪→広島 医薬品輸送', status: 'ST006', date: '2026/06/05' },
+];
+
+function CarrierHistoryScreen({ onNavigate }) {
+  return (
+    <Shell tenantType="CARRIER" activeKey="history" onNavigate={onNavigate}>
+      <PageHeading title="取引履歴一覧" description="自社が成約した案件（成約済〜評価済）を表示します。" />
+      <Card padded={false}>
+        <div onClick={() => onNavigate && onNavigate('carrier-job-detail')} style={{ cursor: 'pointer' }}>
+          <Table
+            columns={[
+              { key: 'id', label: '案件ID' },
+              { key: 'title', label: '案件名' },
+              { key: 'status', label: 'ステータス', render: (r) => <StatusBadge status={r.status} /> },
+              { key: 'date', label: '成約日' },
+            ]}
+            rows={CAR_HISTORY}
+            emptyMessage="取引履歴がありません"
+          />
+        </div>
+      </Card>
+      <div style={{ marginTop: 'var(--space-5)', display: 'flex', justifyContent: 'flex-end' }}>
+        <Pagination page={1} totalPages={1} />
+      </div>
+    </Shell>
+  );
+}
+
+
+window.UIKit = window.UIKit || {};
+Object.assign(window.UIKit, { CarrierDashboardScreen, CarrierJobOpenListScreen, CarrierJobDetailScreen, CarrierNegotiatingListScreen, CarrierRatingScreen, CarrierHistoryScreen });
+
+</script>
+<script type="text/babel" data-presets="react">
+
+const NAV_GROUPS = [
+  { label: '未認証', items: [
+    ['login', 'SCR-001 ログイン'],
+    ['signup', 'SCR-002 企業アカウント登録'],
+    ['reset-request', 'SCR-003 パスワードリセット申請'],
+    ['reset-confirm', 'SCR-004 パスワードリセット再設定'],
+  ]},
+  { label: '共通', items: [
+    ['users', 'SCR-005 ユーザー追加'],
+    ['notifications', 'SCR-012 通知一覧'],
+    ['under-construction', 'SCR-019 工事中'],
+  ]},
+  { label: '配送依頼企業', items: [
+    ['requester-dashboard', 'SCR-006 ダッシュボード'],
+    ['requester-job-new', 'SCR-007 案件登録'],
+    ['requester-job-list', 'SCR-008 案件一覧'],
+    ['requester-job-detail', 'SCR-009 案件詳細（+009-01 モーダル）'],
+    ['requester-rating', 'SCR-010 評価登録'],
+    ['requester-history', 'SCR-011 取引履歴一覧'],
+  ]},
+  { label: '運送会社', items: [
+    ['carrier-dashboard', 'SCR-013 ダッシュボード'],
+    ['carrier-job-open', 'SCR-014 募集中案件一覧'],
+    ['carrier-job-detail', 'SCR-015 案件詳細（+015-01 モーダル）'],
+    ['carrier-job-negotiating', 'SCR-016 交渉中・済一覧'],
+    ['carrier-rating', 'SCR-017 評価登録'],
+    ['carrier-history', 'SCR-018 取引履歴一覧'],
+  ]},
+];
+
+function resolveKey(key, role) {
+  if (key === 'dashboard') return role === 'CARRIER' ? 'carrier-dashboard' : 'requester-dashboard';
+  return key;
+}
+
+function App() {
+  const [screen, setScreen] = useState('requester-dashboard');
+  const role = screen.startsWith('carrier') ? 'CARRIER' : 'REQUESTER';
+  const navigate = (key) => setScreen(resolveKey(key, role));
+
+  const SCREEN_MAP = {
+    login: <LoginScreen onNavigate={navigate} />,
+    signup: <SignUpScreen onNavigate={navigate} />,
+    'reset-request': <ResetRequestScreen onNavigate={navigate} />,
+    'reset-confirm': <ResetConfirmScreen onNavigate={navigate} />,
+    users: <UserAddScreen tenantType={role} onNavigate={navigate} />,
+    notifications: <NotificationsScreen tenantType={role} onNavigate={navigate} />,
+    'under-construction': <UnderConstructionScreen tenantType={role} onNavigate={navigate} />,
+    'requester-dashboard': <RequesterDashboardScreen onNavigate={navigate} />,
+    'requester-job-new': <JobRegisterScreen onNavigate={navigate} />,
+    'requester-job-list': <JobListScreen onNavigate={navigate} />,
+    'requester-job-detail': <RequesterJobDetailScreen onNavigate={navigate} />,
+    'requester-rating': <RequesterRatingScreen onNavigate={navigate} />,
+    'requester-history': <RequesterHistoryScreen onNavigate={navigate} />,
+    'carrier-dashboard': <CarrierDashboardScreen onNavigate={navigate} />,
+    'carrier-job-open': <CarrierJobOpenListScreen onNavigate={navigate} />,
+    'carrier-job-detail': <CarrierJobDetailScreen onNavigate={navigate} />,
+    'carrier-job-negotiating': <CarrierNegotiatingListScreen onNavigate={navigate} />,
+    'carrier-rating': <CarrierRatingScreen onNavigate={navigate} />,
+    'carrier-history': <CarrierHistoryScreen onNavigate={navigate} />,
+  };
+
+  return (
+    <div className="kit-shell">
+      <nav className="kit-nav">
+        <div style={{ padding: '0 20px', fontSize: 13, fontWeight: 700, color: '#fff' }}>配送マッチング Handoff Prototype</div>
+        {NAV_GROUPS.map((g) => (
+          <div key={g.label}>
+            <h4>{g.label}</h4>
+            {g.items.map(([key, label]) => (
+              <button key={key} className={screen === key ? "active" : ""} onClick={() => setScreen(key)}>{label}</button>
+            ))}
+          </div>
+        ))}
+      </nav>
+      <div className="kit-stage">{SCREEN_MAP[screen]}</div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
