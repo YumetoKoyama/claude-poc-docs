@@ -1,0 +1,220 @@
+openapi: 3.1.0
+info:
+  title: 配送マッチング API 共通スキーマ
+  version: 0.1.0
+  description: |
+    全 API で共有する schema / response / parameter / security scheme を定義する唯一の正典（RC-06）。
+    各リソース YAML はここへ $ref するのみとし、ErrorResponse・PageMeta・コード値 enum・例外クラス対応・通知宛先粒度を
+    再定義してはならない（`共通部品設計.md` は実装方式のみを記述する）。
+    コード値 enum は要件 `docs/requirements/コード値定義.md` を正典とし、値・表示名を一致させる。
+    ID 凡例: [docs/凡例.md](../../凡例.md) 参照
+components:
+  schemas:
+    # --- エラー ---
+    ErrorResponse:
+      type: object
+      required: [code, message]
+      description: |
+        全 API 共通のエラーレスポンス（RC-02/RC-06 の唯一の正典）。
+        JSON 実フィールド名（code / message / details[].field / details[].reason）はここを一字一句の正典とする。
+      properties:
+        code:
+          $ref: "#/components/schemas/ErrorCode"
+        message:
+          type: string
+          description: ユーザー向けエラーメッセージ（MSG-XXX の文言、またはその要約）
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                {
+                  type: string,
+                  description: "バリデーション対象フィールド名（camelCase）",
+                }
+              reason: { type: string, description: "エラー理由の説明文" }
+    ErrorCode:
+      type: string
+      description: |
+        アプリケーション定義のエラーコード enum。HTTP ステータスとの対応は `共通部品設計.md`（実装方式のみ）を参照。
+        例外クラス名は `共通部品設計.md` の例外ハンドラ対応表を正典とする（本ファイルでは列挙しない）。
+      enum:
+        - VALIDATION_ERROR # 400: 入力検証エラー（MSG-001, MSG-002, MSG-008, MSG-014, MSG-018 等）
+        - UNAUTHENTICATED # 401: 未認証・トークン無効/期限切れ
+        - LOGIN_FAILED # 401: ログイン ID/パスワード誤り（MSG-015）
+        - ACCOUNT_LOCKED # 401: ログイン試行ロック中（MSG-016）
+        - FORBIDDEN # 403: 自テナント内の権限不足（MSG-023）
+        - NOT_FOUND # 404: リソース未存在／テナント越境（越境は隠蔽のため 404 に統一、通知遷移時 MSG-020、それ以外 MSG-025）
+        - DUPLICATE # 409: 重複（法人重複 AC-201/MSG-024、応募重複 MSG-017 等）
+        - CONFLICT # 409: 状態競合（MSG-009, MSG-010, MSG-011, MSG-021, MSG-022 等）／楽観ロック競合
+        - BID_LIMIT_EXCEEDED # 409: 応募上限超過（MSG-004, BR-009）
+        - BID_DEADLINE_PASSED # 409: 応募自動締切超過（MSG-005, BR-010）
+        - SET_BID_TENANT_MISMATCH # 400: セット応募対象が異なる配送依頼企業（MSG-003, BR-005）
+        - RESET_TOKEN_EXPIRED # 400: パスワード再設定リンク期限切れ（MSG-019）
+        - RATE_LIMITED # 429: パスワードリセット申請等のレート制限超過（MSG-026）
+        - INTERNAL_ERROR # 500: サーバー内部エラー
+    PageMeta:
+      type: object
+      required: [page, size, totalElements, totalPages]
+      properties:
+        page: { type: integer, minimum: 1 }
+        size: { type: integer, minimum: 1 }
+        totalElements: { type: integer, minimum: 0 }
+        totalPages: { type: integer, minimum: 0 }
+
+    # --- コード値 enum（要件 コード値定義.md の物理化。値・表示名は要件と一致させる） ---
+    TenantType:
+      type: string
+      description: 企業種別（コード値定義.md 3節）
+      enum: [REQUESTER, CARRIER]
+      x-display-names:
+        REQUESTER: 配送依頼企業
+        CARRIER: 運送会社
+    PaymentMethod:
+      type: string
+      description: 支払方法種別（コード値定義.md 5節、Q-DM1）
+      enum: [INVOICE, BANK_TRANSFER]
+      x-display-names:
+        INVOICE: 請求書払い（月末締め翌月末払い）
+        BANK_TRANSFER: 銀行振込
+    CargoType:
+      type: string
+      description: 物品種別（コード値定義.md 6節、Q-DM2）
+      enum: [GENERAL_CARGO, PRECISION, FOOD, HAZARDOUS, OTHER]
+      x-display-names:
+        GENERAL_CARGO: 一般貨物
+        PRECISION: 精密機器
+        FOOD: 食品（冷蔵・冷凍）
+        HAZARDOUS: 危険物
+        OTHER: その他
+    TruckType:
+      type: string
+      description: 希望トラック種別（コード値定義.md 6節、Q-DM2）
+      enum: [LIGHT, TRUCK_2T, TRUCK_4T, TRUCK_10T, TRAILER]
+      x-display-names:
+        LIGHT: 軽トラック
+        TRUCK_2T: 2t トラック
+        TRUCK_4T: 4t トラック
+        TRUCK_10T: 10t トラック
+        TRAILER: トレーラー
+    JobAttribute:
+      type: string
+      description: 案件属性（複数選択可、コード値定義.md 6節、Q-DM2）
+      enum: [HAZARDOUS_ATTR, REFRIGERATED, FROZEN, FRAGILE]
+      x-display-names:
+        HAZARDOUS_ATTR: 危険物
+        REFRIGERATED: 要冷蔵
+        FROZEN: 要冷凍
+        FRAGILE: 割れ物
+    JobStatus:
+      type: string
+      description: |
+        案件ステータス（データモデル.md ST-001〜ST-007 の物理化。名称・意味の正典は要件 用語集.md「ステータス定義」）。
+        CANCELLED（ST-007）は第 1 版では発行されない（将来用の予約コードのみ、E-3 整合）。
+      enum:
+        [
+          RECRUITING,
+          NEGOTIATING,
+          CONTRACTED,
+          IN_TRANSIT,
+          COMPLETED,
+          RATED,
+          CANCELLED,
+        ]
+      x-display-names:
+        RECRUITING: 募集中
+        NEGOTIATING: 交渉中
+        CONTRACTED: 成約済
+        IN_TRANSIT: 運送中
+        COMPLETED: 完了
+        RATED: 評価済
+        CANCELLED: キャンセル（第1版未使用）
+    BidStatus:
+      type: string
+      description: 応募ステータス（データモデル.md ST-101〜ST-104 の物理化）
+      enum: [OPEN, CONTRACTED, CLOSED_LOST, CLOSED_SET_FAILED]
+      x-display-names:
+        OPEN: 応募中
+        CONTRACTED: 成約
+        CLOSED_LOST: クローズ（他社成約）
+        CLOSED_SET_FAILED: クローズ（セット連動不成立）
+    SetBidStatus:
+      type: string
+      description: "セット応募の表示用集約ステータス（要件データモデル.md 上は独立した状態IDを持たず、内包する応募群から導出される）"
+      enum: [PENDING, CONTRACTED, FAILED]
+      x-display-names:
+        PENDING: 交渉中
+        CONTRACTED: 成約
+        FAILED: 不成立
+    FinalOfferStatus:
+      type: string
+      description: 最終条件提示ステータス（設計新設。BR-012, Q-J2, Q-J3 の状態表現）
+      enum: [PROPOSED, AGREED, INVALIDATED, DISCARDED]
+      x-display-names:
+        PROPOSED: 提示中
+        AGREED: 合意済
+        INVALIDATED: 無効化（他応募の先行成約により失効、Q-J3）
+        DISCARDED: 破棄（提示先が破棄を選択、Q-J2）
+    NotificationType:
+      type: string
+      description: 通知種別（コード値定義.md 4節）
+      enum: [CONTRACT, GENERAL]
+      x-display-names:
+        CONTRACT: 成約
+        GENERAL: その他（応募・メッセージ・ステータス更新等は一律表示、BR-025）
+
+  parameters:
+    PageParam:
+      name: page
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, default: 1 }
+    SizeParam:
+      name: size
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+
+  responses:
+    BadRequest:
+      description: バリデーションエラー・入力不正（400）
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    Unauthorized:
+      description: 未認証・認証失敗（401）
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    Forbidden:
+      description: 自テナント内の権限不足（403）
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    NotFound:
+      description: リソース未存在・テナント越境（404。越境は存在秘匿のため 404 に統一）
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    Conflict:
+      description: 状態競合・重複・楽観ロック競合（409）
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    TooManyRequests:
+      description: レート制限超過（429）
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    InternalServerError:
+      description: サーバーエラー（500）
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

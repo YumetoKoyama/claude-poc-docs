@@ -1,0 +1,253 @@
+openapi: 3.1.0
+info:
+  title: 交渉・最終条件提示・合意 API
+  version: 0.1.0
+  description: |
+    関連要件: docs/requirements/functional/交渉合意成約.md
+    関連画面: SCR-009, SCR-015
+    関連ユースケース: UC-014（連絡・金額交渉）, UC-015（最終条件提示）, UC-016（合意する）
+    関連業務ルール: BR-012, BR-013, BR-014, BR-015, BR-016, BR-020
+    セット応募（bids.setBidId が非null）の合意は本ファイルの agreeFinalOffer では実行できず、
+    set-bids.yaml の agreeSetBid（セット一括承認, BR-008）を使用する（409 SET_BID_TENANT_MISMATCH 以外の
+    専用エラーとして CONFLICT を返す。詳細は sequences/交渉合意成約.md, sequences/セット応募一括合意.md）。
+paths:
+  /api/bids/{bidId}/messages:
+    get:
+      operationId: listMessages
+      summary: 応募（案件）単位の連絡履歴を取得する
+      description: |
+        出力: 各メッセージに送信者のユーザー名（users.display_name）を含む（画面一覧.md SCR-009/SCR-015 要件）。
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: bidId
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        "200":
+          description: 取得成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/MessageResponse" }
+        "403":
+          $ref: "./_common.yaml#/components/responses/Forbidden"
+        "404":
+          $ref: "./_common.yaml#/components/responses/NotFound"
+    post:
+      operationId: createMessage
+      summary: 連絡メッセージを送信する
+      description: |
+        受け入れ条件: AC-001（交渉合意成約.md）, AC-101（成約済以降は送信不可、BR-016, BR-019）
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: bidId
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MessageCreateRequest" }
+      responses:
+        "201":
+          description: 送信成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessageResponse" }
+        "400":
+          $ref: "./_common.yaml#/components/responses/BadRequest"
+        "403":
+          $ref: "./_common.yaml#/components/responses/Forbidden"
+        "404":
+          $ref: "./_common.yaml#/components/responses/NotFound"
+        "409":
+          description: "成約済以降のため送信不可（MSG-021, BR-016, BR-019）"
+          $ref: "./_common.yaml#/components/responses/Conflict"
+  /api/bids/{bidId}/final-offer:
+    post:
+      operationId: proposeFinalOffer
+      summary: 最終条件を提示する
+      description: |
+        受け入れ条件: AC-001（交渉合意成約.md）, AC-401（Q-J2: 提示後は取消・再提示不可）
+        業務ルール: BR-012。既存の PROPOSED な final_offers 行がある場合は 409（再提示不可）。
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: bidId
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FinalOfferCreateRequest" }
+      responses:
+        "201":
+          description: 提示成功（AC-001）
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FinalOfferResponse" }
+        "400":
+          description: "入力検証エラー（MSG-008）"
+          $ref: "./_common.yaml#/components/responses/BadRequest"
+        "403":
+          $ref: "./_common.yaml#/components/responses/Forbidden"
+        "404":
+          $ref: "./_common.yaml#/components/responses/NotFound"
+        "409":
+          description: "既に提示中、または成約済以降（MSG-021, BR-012, BR-016）"
+          $ref: "./_common.yaml#/components/responses/Conflict"
+  /api/bids/{bidId}/final-offer/agree:
+    post:
+      operationId: agreeFinalOffer
+      summary: 提示された最終条件に合意し成約処理を行う（セット応募以外）
+      description: |
+        受け入れ条件: AC-001（交渉合意成約.md）
+        業務ルール: BR-012（合意成立）, BR-013（成約時スナップショット保存）, BR-014（他応募者クローズ通知）,
+        BR-015（セット応募クローズの連動。自身が非セット応募でも、他応募者がセット応募だった場合は連動）
+        排他制御: 対象案件・応募・および連鎖してクローズされる他応募/他セット応募の対象案件を ID 昇順で
+        FOR UPDATE ロックしてから状態更新する（sequences/交渉合意成約.md 参照、B-3 是正）。
+        対象がセット応募（bids.setBidId が非null）の場合は 409（SET_BID_TENANT_MISMATCH ではなく CONFLICT。
+        set-bids.yaml の agreeSetBid を使用するよう案内する）。
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: bidId
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        "200":
+          description: 合意成立・成約成功（AC-001）
+          content:
+            application/json:
+              schema:
+                { $ref: "./jobs.yaml#/components/schemas/JobDetailResponse" }
+        "403":
+          $ref: "./_common.yaml#/components/responses/Forbidden"
+        "404":
+          $ref: "./_common.yaml#/components/responses/NotFound"
+        "409":
+          description: |
+            相手の状態が変化し合意できない（CONFLICT, MSG-009: 他応募の先行成約による無効化・Q-J3）、
+            またはセット応募対象（別 API を使用すべき）
+          $ref: "./_common.yaml#/components/responses/Conflict"
+  /api/bids/{bidId}/final-offer/discard:
+    post:
+      operationId: discardFinalOffer
+      summary: 提示中の最終条件を破棄する
+      description: |
+        受け入れ条件: AC-401（Q-J2: 合意するか破棄するかのみ選択可能）
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: bidId
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        "204":
+          description: 破棄成功
+        "403":
+          $ref: "./_common.yaml#/components/responses/Forbidden"
+        "404":
+          $ref: "./_common.yaml#/components/responses/NotFound"
+        "409":
+          description: "提示中の最終条件が存在しない"
+          $ref: "./_common.yaml#/components/responses/Conflict"
+components:
+  schemas:
+    MessageCreateRequest:
+      type: object
+      required: [body]
+      properties:
+        body:
+          {
+            type: string,
+            minLength: 1,
+            maxLength: 2000,
+            x-validate-not-blank: true,
+            pattern: "^[^<>]*$",
+          }
+        templateCode:
+          {
+            type: string,
+            maxLength: 50,
+            nullable: true,
+            description: "定型文コード（任意、自由入力の場合は null）",
+          }
+    MessageResponse:
+      type: object
+      required:
+        [
+          messageId,
+          bidId,
+          senderUserId,
+          senderDisplayName,
+          senderTenantId,
+          body,
+          createdAt,
+        ]
+      properties:
+        messageId: { type: integer, format: int64 }
+        bidId: { type: integer, format: int64 }
+        senderUserId: { type: integer, format: int64 }
+        senderDisplayName:
+          {
+            type: string,
+            description: "アカウント登録.md のユーザー名（識別名）",
+          }
+        senderTenantId: { type: integer, format: int64 }
+        body: { type: string }
+        templateCode: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+    FinalOfferCreateRequest:
+      type: object
+      required:
+        [amount, fromLocation, fromDatetime, toLocation, toDatetime, truckType]
+      properties:
+        amount: { type: integer, minimum: 1, x-validate-positive: true }
+        fromLocation:
+          {
+            type: string,
+            minLength: 1,
+            maxLength: 500,
+            x-validate-not-blank: true,
+            pattern: "^[^<>]*$",
+          }
+        fromDatetime: { type: string, format: date-time }
+        toLocation:
+          {
+            type: string,
+            minLength: 1,
+            maxLength: 500,
+            x-validate-not-blank: true,
+            pattern: "^[^<>]*$",
+          }
+        toDatetime: { type: string, format: date-time }
+        truckType: { $ref: "./_common.yaml#/components/schemas/TruckType" }
+    FinalOfferResponse:
+      type: object
+      required:
+        [finalOfferId, bidId, proposedByTenantId, amount, status, createdAt]
+      properties:
+        finalOfferId: { type: integer, format: int64 }
+        bidId: { type: integer, format: int64 }
+        proposedByTenantId: { type: integer, format: int64 }
+        amount: { type: integer }
+        fromLocation: { type: string }
+        fromDatetime: { type: string, format: date-time }
+        toLocation: { type: string }
+        toDatetime: { type: string, format: date-time }
+        truckType: { $ref: "./_common.yaml#/components/schemas/TruckType" }
+        status: { $ref: "./_common.yaml#/components/schemas/FinalOfferStatus" }
+        createdAt: { type: string, format: date-time }

@@ -1,0 +1,99 @@
+openapi: 3.1.0
+info:
+  title: 評価（Rating）API
+  version: 0.1.0
+  description: |
+    関連要件: docs/requirements/functional/評価.md
+    関連画面: SCR-010, SCR-017
+    関連ユースケース: UC-020
+    関連業務ルール: BR-017（双方評価完了で完了→評価済）, BR-018（評価は一度のみ・編集不可）
+paths:
+  /api/jobs/{jobId}/ratings:
+    get:
+      operationId: listRatingsForJob
+      summary: 案件に対する評価登録状況を取得する
+      description: |
+        自社が登録済みかどうか（編集導線の非表示判定, BR-018, MSG-022）と、双方の評価完了有無を返す。
+        評価コメント本文は自社が当事者の場合のみ返す。
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        "200":
+          description: 取得成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/RatingResponse" }
+        "403":
+          $ref: "./_common.yaml#/components/responses/Forbidden"
+        "404":
+          $ref: "./_common.yaml#/components/responses/NotFound"
+    post:
+      operationId: createRating
+      summary: 相手への評価を登録する
+      description: |
+        受け入れ条件: AC-001, AC-101, AC-201, AC-301（評価.md）
+        業務ルール: BR-017（双方評価完了で案件ステータスを RATED に遷移）, BR-018（一意性。UNIQUE(job_id, rater_tenant_id)）
+        案件ステータスが COMPLETED でない場合、または既に自社が評価済みの場合は 409。
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RatingCreateRequest" }
+      responses:
+        "201":
+          description: 登録成功（AC-001）
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RatingResponse" }
+        "400":
+          $ref: "./_common.yaml#/components/responses/BadRequest"
+        "403":
+          $ref: "./_common.yaml#/components/responses/Forbidden"
+        "404":
+          $ref: "./_common.yaml#/components/responses/NotFound"
+        "409":
+          description: "案件ステータスが完了でない、または既に評価登録済み（MSG-022, BR-018）"
+          $ref: "./_common.yaml#/components/responses/Conflict"
+components:
+  schemas:
+    RatingCreateRequest:
+      type: object
+      required: [score]
+      properties:
+        score:
+          {
+            type: integer,
+            minimum: 1,
+            maximum: 5,
+            description: "★1〜5の5段階（Q-DM5）",
+          }
+        comment: { type: string, maxLength: 1000, pattern: "^[^<>]*$" }
+    RatingResponse:
+      type: object
+      required:
+        [ratingId, jobId, raterTenantId, rateeTenantId, score, createdAt]
+      properties:
+        ratingId: { type: integer, format: int64 }
+        jobId: { type: integer, format: int64 }
+        raterTenantId: { type: integer, format: int64 }
+        rateeTenantId: { type: integer, format: int64 }
+        score: { type: integer, minimum: 1, maximum: 5 }
+        comment: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
