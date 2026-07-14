@@ -1,0 +1,476 @@
+openapi: 3.1.0
+info:
+  title: 案件（Job）API
+  version: 0.1.0
+  description: |
+    関連要件: docs/requirements/functional/案件登録.md, 案件削除.md, 運送ステータス報告.md, 取引履歴.md
+    関連画面: SCR-006, SCR-007, SCR-008, SCR-009, SCR-011, SCR-013, SCR-014, SCR-015, SCR-018
+    関連ユースケース: UC-007, UC-008, UC-009, UC-010, UC-017, UC-018, UC-019, UC-022
+    関連業務ルール: BR-011, BR-017, BR-019, BR-020, BR-021, BR-022, BR-023
+    取引履歴（SCR-011, SCR-018）は専用リソースを持たず、listJobs / getJobById のステータスフィルタで読み取り専用に再利用する。
+paths:
+  /api/jobs:
+    get:
+      operationId: listJobs
+      summary: 案件一覧を取得する（自社登録分 or 募集中の公開案件）
+      description: |
+        受け入れ条件: AC-002, AC-201, AC-301（案件登録.md）, AC-001, AC-101（取引履歴.md）
+        scope=own: 自テナント（配送依頼企業）が登録した案件一覧（SCR-008, SCR-011）。論理削除済みも `logicallyDeleted:true` で含める（案件削除.md AC-201）。
+        scope=recruiting: 全テナントに公開される募集中案件（SCR-014）＋ 自社が応募済みの交渉中以降案件（SCR-016 は bids.yaml の listMyBids を使用）。
+        テナントフィルタは本 API のクエリ生成で必ず適用する（越境防止、権限マトリクス.md 5節）。
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "./_common.yaml#/components/parameters/PageParam"
+        - $ref: "./_common.yaml#/components/parameters/SizeParam"
+        - name: scope
+          in: query
+          required: true
+          schema: { type: string, enum: [own, recruiting] }
+        - name: status
+          in: query
+          required: false
+          description: "カンマ区切りの JobStatus（例: RECRUITING,NEGOTIATING）"
+          schema:
+            {
+              type: array,
+              items: { $ref: "./_common.yaml#/components/schemas/JobStatus" },
+            }
+        - name: query
+          in: query
+          required: false
+          description: "fromLocation / toLocation に対する自由入力検索（都道府県名等を含む文字列一致、UC-010）"
+          schema: { type: string, maxLength: 200, pattern: "^[^<>]*$" }
+        - name: fromDatetimeAfter
+          in: query
+          required: false
+          description: "時間帯絞り込み（from時刻の下限、UC-010）"
+          schema: { type: string, format: date-time }
+        - name: fromDatetimeBefore
+          in: query
+          required: false
+          description: "時間帯絞り込み（from時刻の上限、UC-010）"
+          schema: { type: string, format: date-time }
+        - name: sort
+          in: query
+          required: false
+          schema:
+            {
+              type: string,
+              enum: [fromDatetimeAsc, updatedAtDesc],
+              default: updatedAtDesc,
+            }
+      responses:
+        "200":
+          description: 一覧取得成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, pageMeta]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/JobSummaryResponse" }
+                  pageMeta:
+                    { $ref: "./_common.yaml#/components/schemas/PageMeta" }
+        "401":
+          $ref: "./_common.yaml#/components/responses/Unauthorized"
+    post:
+      operationId: createJob
+      summary: 案件を登録する
+      description: |
+        受け入れ条件: AC-001, AC-101（案件登録.md）
+        業務ルール: BR-011（登録直後は募集中 = RECRUITING）
+        認可: 配送依頼企業ユーザーのみ（セキュリティ設計.md 5節 認可設計）。
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/JobCreateRequest" }
+      responses:
+        "201":
+          description: 登録成功（AC-001）
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JobDetailResponse" }
+        "400":
+          description: "必須項目未入力、from/to 日時不整合（AC-101, MSG-001）"
+          $ref: "./_common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./_common.yaml#/components/responses/Unauthorized"
+        "403":
+          description: "運送会社ユーザーによる登録試行"
+          $ref: "./_common.yaml#/components/responses/Forbidden"
+  /api/jobs/status-summary:
+    get:
+      operationId: getJobStatusSummary
+      summary: ステータス別件数サマリを取得する（ダッシュボード用）
+      description: |
+        関連画面: SCR-006（自社案件のステータス別件数）, SCR-013（募集中サマリ・自社応募状況）
+        listJobs と同じ scope/status フィルタ意味論を共有する集計専用エンドポイント。
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: scope
+          in: query
+          required: true
+          schema: { type: string, enum: [own, recruiting] }
+      responses:
+        "200":
+          description: 取得成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [counts, newCount]
+                properties:
+                  counts:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        status:
+                          {
+                            $ref: "./_common.yaml#/components/schemas/JobStatus",
+                          }
+                        count: { type: integer, minimum: 0 }
+                  newCount:
+                    type: integer
+                    minimum: 0
+                    description: "24時間以内に更新があった件数（SC-002）"
+        "401":
+          $ref: "./_common.yaml#/components/responses/Unauthorized"
+  /api/jobs/{jobId}:
+    get:
+      operationId: getJobById
+      summary: 案件詳細を取得する
+      description: |
+        受け入れ条件: AC-301（案件登録.md）, AC-001（交渉合意成約.md/取引履歴.md）
+        レスポンスの可視項目は閲覧者との関係で変化する（BR-020 連絡先段階開示・BR-021 競合金額匿名化はサービス層で判定し、
+        フィールド自体を null/省略にする。FE 側の表示制御には依存しない＝A-2 是正）。
+        テナント越境（自テナントが当事者でない交渉中以降案件への直接アクセス）は 404。
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        "200":
+          description: 取得成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JobDetailResponse" }
+        "404":
+          $ref: "./_common.yaml#/components/responses/NotFound"
+    patch:
+      operationId: updateJob
+      summary: 案件内容を編集する（募集中・交渉中のみ）
+      description: |
+        受け入れ条件: AC-101（案件削除.md）
+        業務ルール: BR-019（成約済以降は更新不可）
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/JobUpdateRequest" }
+      responses:
+        "200":
+          description: 更新成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JobDetailResponse" }
+        "400":
+          $ref: "./_common.yaml#/components/responses/BadRequest"
+        "403":
+          $ref: "./_common.yaml#/components/responses/Forbidden"
+        "404":
+          $ref: "./_common.yaml#/components/responses/NotFound"
+        "409":
+          description: "成約済以降のため更新不可（CONFLICT, MSG-021, BR-019）"
+          $ref: "./_common.yaml#/components/responses/Conflict"
+    delete:
+      operationId: deleteJob
+      summary: 案件を論理削除する（募集中・交渉中のみ）
+      description: |
+        受け入れ条件: AC-001, AC-101, AC-201, AC-301, AC-401（案件削除.md）
+        業務ルール: BR-022（論理削除→24時間後に夜間バッチ EXT-010 で物理削除）
+        応募していた運送会社へ通知（MSG-013）を同一トランザクション内で作成する（通知作成失敗は本操作を失敗させない、通知・文面定義.md 2節）。
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        "204":
+          description: 論理削除成功（AC-001）
+        "403":
+          $ref: "./_common.yaml#/components/responses/Forbidden"
+        "404":
+          $ref: "./_common.yaml#/components/responses/NotFound"
+        "409":
+          description: "成約済以降のため削除不可（CONFLICT, MSG-021, BR-019）"
+          $ref: "./_common.yaml#/components/responses/Conflict"
+  /api/jobs/{jobId}/departure-report:
+    post:
+      operationId: reportDeparture
+      summary: 運送開始を報告する
+      description: |
+        受け入れ条件: AC-001, AC-101, AC-301（運送ステータス報告.md）
+        業務ルール: BR-017（成約済 → 運送中）。認可: 当該案件の成約応募を保有する運送会社のみ。
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        "200":
+          description: 報告成功（AC-001）
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JobDetailResponse" }
+        "403":
+          $ref: "./_common.yaml#/components/responses/Forbidden"
+        "404":
+          $ref: "./_common.yaml#/components/responses/NotFound"
+        "409":
+          description: "案件ステータスが成約済でない（CONFLICT, MSG-010）"
+          $ref: "./_common.yaml#/components/responses/Conflict"
+  /api/jobs/{jobId}/completion-report:
+    post:
+      operationId: reportCompletion
+      summary: 運送完了を報告する
+      description: |
+        受け入れ条件: AC-001, AC-101, AC-301（運送ステータス報告.md）
+        業務ルール: BR-017。報告後の取消は不可（Q-J4）。
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        "200":
+          description: 報告成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JobDetailResponse" }
+        "403":
+          $ref: "./_common.yaml#/components/responses/Forbidden"
+        "404":
+          $ref: "./_common.yaml#/components/responses/NotFound"
+        "409":
+          description: "案件ステータスが運送中でない（CONFLICT）"
+          $ref: "./_common.yaml#/components/responses/Conflict"
+  /api/jobs/{jobId}/completion-confirmation:
+    post:
+      operationId: confirmCompletion
+      summary: 完了報告内容を確認し完了を確定する
+      description: |
+        受け入れ条件: AC-002, AC-102, AC-301（運送ステータス報告.md）
+        業務ルール: BR-017（運送中 → 完了）。運送会社の完了報告が未実施の場合は 409（MSG-011）。
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        "200":
+          description: 確認成功（AC-002）
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JobDetailResponse" }
+        "403":
+          $ref: "./_common.yaml#/components/responses/Forbidden"
+        "404":
+          $ref: "./_common.yaml#/components/responses/NotFound"
+        "409":
+          description: "完了報告が未実施（CONFLICT, MSG-011）"
+          $ref: "./_common.yaml#/components/responses/Conflict"
+components:
+  schemas:
+    JobCreateRequest:
+      type: object
+      required:
+        [
+          fromLocation,
+          fromDatetime,
+          toLocation,
+          toDatetime,
+          volumeM3,
+          cargoType,
+          truckType,
+          desiredAmount,
+        ]
+      properties:
+        fromLocation:
+          {
+            type: string,
+            minLength: 1,
+            maxLength: 500,
+            x-validate-not-blank: true,
+            pattern: "^[^<>]*$",
+          }
+        fromDatetime: { type: string, format: date-time }
+        toLocation:
+          {
+            type: string,
+            minLength: 1,
+            maxLength: 500,
+            x-validate-not-blank: true,
+            pattern: "^[^<>]*$",
+          }
+        toDatetime: { type: string, format: date-time }
+        volumeM3:
+          {
+            type: number,
+            format: double,
+            exclusiveMinimum: 0,
+            x-validate-positive: true,
+            description: "単位: m3",
+          }
+        attributes:
+          type: array
+          items: { $ref: "./_common.yaml#/components/schemas/JobAttribute" }
+        cargoType: { $ref: "./_common.yaml#/components/schemas/CargoType" }
+        truckType: { $ref: "./_common.yaml#/components/schemas/TruckType" }
+        desiredAmount:
+          {
+            type: integer,
+            minimum: 1,
+            x-validate-positive: true,
+            description: "単位: 円（税別）、整数",
+          }
+        remarks: { type: string, maxLength: 2000, pattern: "^[^<>]*$" }
+    JobUpdateRequest:
+      allOf:
+        - $ref: "#/components/schemas/JobCreateRequest"
+    JobSummaryResponse:
+      type: object
+      required:
+        - jobId, status, fromLocation, fromDatetime, toLocation, toDatetime, volumeM3, cargoType, truckType
+        - desiredAmount, isNew, bidCount, logicallyDeleted
+      properties:
+        jobId: { type: integer, format: int64 }
+        status: { $ref: "./_common.yaml#/components/schemas/JobStatus" }
+        requesterTenantId: { type: integer, format: int64 }
+        requesterCompanyName:
+          { type: string, description: "scope=recruiting でも表示可（BR-020）" }
+        fromLocation: { type: string }
+        fromDatetime: { type: string, format: date-time }
+        toLocation: { type: string }
+        toDatetime: { type: string, format: date-time }
+        volumeM3: { type: number, format: double }
+        attributes:
+          type: array
+          items: { $ref: "./_common.yaml#/components/schemas/JobAttribute" }
+        cargoType: { $ref: "./_common.yaml#/components/schemas/CargoType" }
+        truckType: { $ref: "./_common.yaml#/components/schemas/TruckType" }
+        desiredAmount: { type: integer }
+        isNew:
+          { type: boolean, description: "updatedAt が24時間以内か（SC-002）" }
+        bidCount:
+          {
+            type: integer,
+            minimum: 0,
+            description: "件数のみ（金額は非表示、BR-021）",
+          }
+        logicallyDeleted:
+          {
+            type: boolean,
+            description: "配送依頼企業側にのみ true で表示（案件削除.md AC-201）",
+          }
+        bidDeadline:
+          {
+            type: string,
+            format: date-time,
+            description: "fromDatetime の2時間前（BR-010）。UI の応募可否活性制御に使用",
+          }
+    JobDetailResponse:
+      allOf:
+        - $ref: "#/components/schemas/JobSummaryResponse"
+        - type: object
+          properties:
+            remarks: { type: string }
+            requesterCompanyPhone:
+              { type: string, description: "募集中・交渉中でも表示（BR-020）" }
+            requesterCompanyEmail:
+              { type: string, description: "募集中・交渉中でも表示（BR-020）" }
+            requesterContactName:
+              type: string
+              nullable: true
+              description: "個人担当者名。成約済以降のみ非null（BR-020）"
+            requesterContactPhone:
+              type: string
+              nullable: true
+              description: "個人連絡先。成約済以降のみ非null（BR-020）"
+            departureReportedAt:
+              { type: string, format: date-time, nullable: true }
+            completionReportedAt:
+              { type: string, format: date-time, nullable: true }
+            completionConfirmedAt:
+              { type: string, format: date-time, nullable: true }
+            myBidId:
+              type: integer
+              format: int64
+              nullable: true
+              description: "呼び出し元が運送会社の場合、自社の応募ID（未応募なら null）"
+            contract:
+              nullable: true
+              description: "案件ステータスが CONTRACTED 以降の場合のみ非null（contract_snapshots の物理化、ENT-007）。SCR-009/SCR-015 の成約スナップショット表示、SCR-011/SCR-018 の取引履歴詳細で使用"
+              allOf:
+                - $ref: "#/components/schemas/ContractSnapshotResponse"
+    ContractSnapshotResponse:
+      type: object
+      required:
+        - jobId, bidId, requesterTenantId, carrierTenantId, agreedAmount
+        - fromLocation, fromDatetime, toLocation, toDatetime, truckType, contractedAt
+      properties:
+        jobId: { type: integer, format: int64 }
+        bidId: { type: integer, format: int64 }
+        setBidId: { type: integer, format: int64, nullable: true }
+        requesterTenantId: { type: integer, format: int64 }
+        carrierTenantId: { type: integer, format: int64 }
+        agreedAmount: { type: integer }
+        fromLocation: { type: string }
+        fromDatetime: { type: string, format: date-time }
+        toLocation: { type: string }
+        toDatetime: { type: string, format: date-time }
+        truckType: { $ref: "./_common.yaml#/components/schemas/TruckType" }
+        requesterCompanyName: { type: string }
+        requesterContactName: { type: string }
+        requesterContactPhone: { type: string }
+        requesterContactEmail: { type: string }
+        carrierCompanyName: { type: string }
+        carrierContactName: { type: string }
+        carrierContactPhone: { type: string }
+        carrierContactEmail: { type: string }
+        messages:
+          type: array
+          description: "合意時点までの連絡履歴の複製（以後の元メッセージ更新には追従しない）"
+          items:
+            type: object
+            properties:
+              senderDisplayName: { type: string }
+              senderTenantId: { type: integer, format: int64 }
+              body: { type: string }
+              sentAt: { type: string, format: date-time }
+        contractedAt: { type: string, format: date-time }

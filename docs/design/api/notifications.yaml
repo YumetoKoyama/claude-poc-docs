@@ -1,0 +1,104 @@
+openapi: 3.1.0
+info:
+  title: 通知（Notification）API
+  version: 0.1.0
+  description: |
+    関連要件: docs/requirements/functional/通知.md
+    関連画面: SCR-012, 共通レイアウト（通知ベル）
+    関連ユースケース: UC-021
+    関連業務ルール: BR-014, BR-015, BR-024, BR-025
+    通知の宛先粒度は**テナント単位**とする（設計決定。根拠は docs/design/概要.md「前提条件」および tables/notifications.md）。
+paths:
+  /api/notifications:
+    get:
+      operationId: listNotifications
+      summary: 自テナント宛ての通知一覧を取得する
+      description: |
+        受け入れ条件: AC-001, AC-002, AC-301（通知.md）
+        業務ルール: BR-025（成約は明示区別、その他は一律「新着メッセージがあります」表示）
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "./_common.yaml#/components/parameters/PageParam"
+        - $ref: "./_common.yaml#/components/parameters/SizeParam"
+      responses:
+        "200":
+          description: 取得成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, pageMeta]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/NotificationResponse" }
+                  pageMeta:
+                    { $ref: "./_common.yaml#/components/schemas/PageMeta" }
+        "401":
+          $ref: "./_common.yaml#/components/responses/Unauthorized"
+  /api/notifications/unread-count:
+    get:
+      operationId: getUnreadNotificationCount
+      summary: 未読件数を取得する（通知ベル表示用）
+      description: |
+        受け入れ条件: AC-001, AC-201（通知.md）
+        業務ルール: BR-024（上限「9+」）。表示上限のキャップは FE 側で行い、本 API は実数を返す
+        （フロントエンド共通設計.md のヘッダー表示ロジックが 9 超過時に "9+" へ変換する）。
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: 取得成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [unreadCount]
+                properties:
+                  unreadCount: { type: integer, minimum: 0 }
+        "401":
+          $ref: "./_common.yaml#/components/responses/Unauthorized"
+  /api/notifications/{notificationId}/read:
+    post:
+      operationId: markNotificationRead
+      summary: 通知を既読にする
+      description: |
+        受け入れ条件: AC-002（通知.md）
+        通知クリック時に呼び出し、既読化後 relatedJobId を用いて該当案件詳細（getJobById）へ遷移する。
+        関連案件が既に物理削除されている場合、既読化自体は成功するが、後続の getJobById が 404 を返すため
+        FE は MSG-020 を表示する（AC-101）。
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: notificationId
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        "200":
+          description: 既読化成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotificationResponse" }
+        "403":
+          $ref: "./_common.yaml#/components/responses/Forbidden"
+        "404":
+          $ref: "./_common.yaml#/components/responses/NotFound"
+components:
+  schemas:
+    NotificationResponse:
+      type: object
+      required: [notificationId, notificationType, body, isRead, createdAt]
+      properties:
+        notificationId: { type: integer, format: int64 }
+        notificationType:
+          { $ref: "./_common.yaml#/components/schemas/NotificationType" }
+        body:
+          {
+            type: string,
+            description: "MSG-006, MSG-007, MSG-013、または一律「新着メッセージがあります」（BR-025）",
+          }
+        relatedJobId: { type: integer, format: int64, nullable: true }
+        isRead: { type: boolean }
+        createdAt: { type: string, format: date-time }

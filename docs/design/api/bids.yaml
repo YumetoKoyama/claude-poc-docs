@@ -1,0 +1,251 @@
+openapi: 3.1.0
+info:
+  title: 応募（Bid）API
+  version: 0.1.0
+  description: |
+    関連要件: docs/requirements/functional/応募.md
+    関連画面: SCR-014, SCR-015, SCR-016, SCR-018, SCR-009（応募一覧表示）
+    関連ユースケース: UC-010, UC-011, UC-013
+    関連業務ルール: BR-004, BR-009, BR-010, BR-019, BR-021
+    セット応募の作成・一括合意は set-bids.yaml を参照。最終条件提示・合意は negotiations.yaml を参照。
+    /api/jobs/{jobId}/bids と /api/bids/{bidId} は同一リソース（応募）観点で本ファイルに集約する。
+paths:
+  /api/jobs/{jobId}/bids:
+    get:
+      operationId: listBidsForJob
+      summary: 案件に対する応募一覧を取得する
+      description: |
+        受け入れ条件: AC-301（応募.md 権限境界の裏返し）, 案件詳細の応募一覧表示（SCR-009, SCR-015）
+        業務ルール: BR-021（競合表示は金額のみ匿名化。会社名は非開示。成約後は競合情報を非表示）
+        配送依頼企業（案件の当事者）には全応募の会社名・金額を表示する。運送会社には自社応募のみ実名・金額を表示し、
+        他社応募は `carrierCompanyName` を "A社"等の匿名ラベルに、`amount` を null にする（サービス層でフィールドをマスクする。A-2 是正）。
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        "200":
+          description: 取得成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/BidResponse" }
+        "404":
+          $ref: "./_common.yaml#/components/responses/NotFound"
+    post:
+      operationId: createBid
+      summary: 案件に応募する
+      description: |
+        受け入れ条件: AC-001, AC-101, AC-102（応募.md）
+        業務ルール: BR-004（応募の一意性、UNIQUE(job_id, carrier_tenant_id)）, BR-009（応募上限20社、行ロックで保証）,
+        BR-010（応募自動締切: fromDatetime の2時間前以降は不可、境界を含む）, BR-011（初回応募で案件が交渉中へ遷移）
+        排他制御: 案件行を SELECT ... FOR UPDATE した上で現在の応募数（実 COUNT、非正規化カウンタに依存しない）と
+        締切時刻を再検証してから INSERT する（B-1/B-2 是正、詳細は sequences/応募.md）。
+        認可: 運送会社ユーザーのみ。
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BidCreateRequest" }
+      responses:
+        "201":
+          description: 応募成功（AC-001）
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BidResponse" }
+        "400":
+          $ref: "./_common.yaml#/components/responses/BadRequest"
+        "403":
+          $ref: "./_common.yaml#/components/responses/Forbidden"
+        "404":
+          $ref: "./_common.yaml#/components/responses/NotFound"
+        "409":
+          description: |
+            応募上限超過（BID_LIMIT_EXCEEDED, MSG-004, AC-101）、
+            締切超過（BID_DEADLINE_PASSED, MSG-005, AC-101）、
+            重複応募（DUPLICATE, MSG-017, AC-102, BR-004）のいずれか
+          $ref: "./_common.yaml#/components/responses/Conflict"
+  /api/bids:
+    get:
+      operationId: listMyBids
+      summary: 自社（運送会社）の応募一覧を取得する
+      description: |
+        関連画面: SCR-016（交渉中・済一覧）, SCR-018（取引履歴一覧・運送会社）
+        status クエリで SCR-016（OPEN 系＝案件が交渉中）と SCR-018（案件が成約済〜評価済）を出し分ける。
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "./_common.yaml#/components/parameters/PageParam"
+        - $ref: "./_common.yaml#/components/parameters/SizeParam"
+        - name: jobStatus
+          in: query
+          required: false
+          schema:
+            {
+              type: array,
+              items: { $ref: "./_common.yaml#/components/schemas/JobStatus" },
+            }
+      responses:
+        "200":
+          description: 取得成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, pageMeta]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      { $ref: "#/components/schemas/BidWithJobSummaryResponse" }
+                  pageMeta:
+                    { $ref: "./_common.yaml#/components/schemas/PageMeta" }
+        "401":
+          $ref: "./_common.yaml#/components/responses/Unauthorized"
+  /api/bids/{bidId}:
+    get:
+      operationId: getBidById
+      summary: 応募詳細を取得する
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: bidId
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        "200":
+          description: 取得成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BidResponse" }
+        "404":
+          $ref: "./_common.yaml#/components/responses/NotFound"
+    patch:
+      operationId: updateBid
+      summary: 応募内容を編集する（成約前のみ）
+      description: |
+        受け入れ条件: AC-001（応募.md ストーリー4）, AC-301
+        業務ルール: BR-019（成約済以降は編集不可）。認可: 自社の応募のみ。
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: bidId
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BidUpdateRequest" }
+      responses:
+        "200":
+          description: 更新成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BidResponse" }
+        "400":
+          description: "入力検証エラー（MSG-002）"
+          $ref: "./_common.yaml#/components/responses/BadRequest"
+        "403":
+          $ref: "./_common.yaml#/components/responses/Forbidden"
+        "404":
+          $ref: "./_common.yaml#/components/responses/NotFound"
+        "409":
+          description: "成約済以降のため更新不可（MSG-021, BR-019）"
+          $ref: "./_common.yaml#/components/responses/Conflict"
+components:
+  schemas:
+    BidCreateRequest:
+      type: object
+      required: [amount]
+      properties:
+        amount:
+          {
+            type: integer,
+            minimum: 1,
+            x-validate-positive: true,
+            description: "希望金額に同意する場合は案件の desiredAmount と同値を送る",
+          }
+    BidUpdateRequest:
+      type: object
+      required: [amount]
+      properties:
+        amount: { type: integer, minimum: 1, x-validate-positive: true }
+    BidResponse:
+      type: object
+      required: [bidId, jobId, status, isMine, createdAt]
+      properties:
+        bidId: { type: integer, format: int64 }
+        jobId: { type: integer, format: int64 }
+        carrierTenantId:
+          {
+            type: integer,
+            format: int64,
+            nullable: true,
+            description: "他社応募を閲覧する運送会社には null（匿名化）",
+          }
+        carrierCompanyName:
+          {
+            type: string,
+            description: "自社/配送依頼企業視点は実名。他社運送会社視点は「A社」等の匿名ラベル（BR-021）",
+          }
+        carrierCompanyPhone:
+          {
+            type: string,
+            nullable: true,
+            description: "運送会社の代表電話番号。募集中・交渉中でも配送依頼企業には表示（BR-020）。他社運送会社視点は匿名化のため null（BR-021 準拠）",
+          }
+        carrierCompanyEmail:
+          {
+            type: string,
+            nullable: true,
+            description: "運送会社の代表メールアドレス。募集中・交渉中でも配送依頼企業には表示（BR-020）。他社運送会社視点は匿名化のため null（BR-021 準拠）",
+          }
+        amount:
+          {
+            type: integer,
+            nullable: true,
+            description: "他社の応募を閲覧する運送会社には null（BR-021）。成約後は他社分自体を返さない",
+          }
+        status: { $ref: "./_common.yaml#/components/schemas/BidStatus" }
+        setBidId: { type: integer, format: int64, nullable: true }
+        isMine: { type: boolean }
+        currentFinalOffer:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/FinalOfferSummary"
+        createdAt: { type: string, format: date-time }
+    BidWithJobSummaryResponse:
+      allOf:
+        - $ref: "#/components/schemas/BidResponse"
+        - type: object
+          properties:
+            job: { $ref: "./jobs.yaml#/components/schemas/JobSummaryResponse" }
+    FinalOfferSummary:
+      type: object
+      properties:
+        finalOfferId: { type: integer, format: int64 }
+        proposedByTenantId: { type: integer, format: int64 }
+        amount: { type: integer }
+        fromLocation: { type: string }
+        fromDatetime: { type: string, format: date-time }
+        toLocation: { type: string }
+        toDatetime: { type: string, format: date-time }
+        truckType: { $ref: "./_common.yaml#/components/schemas/TruckType" }
+        status: { $ref: "./_common.yaml#/components/schemas/FinalOfferStatus" }

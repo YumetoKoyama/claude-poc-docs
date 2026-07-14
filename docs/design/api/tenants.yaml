@@ -1,0 +1,151 @@
+openapi: 3.1.0
+info:
+  title: テナント（企業アカウント）API
+  version: 0.1.0
+  description: |
+    関連要件: docs/requirements/functional/アカウント登録.md
+    関連画面: SCR-002 企業アカウント登録画面
+    関連ユースケース: UC-001, UC-002
+    関連業務ルール: BR-001, BR-002, BR-003
+    権限マトリクス.md の ENT-001「R/U（自社テナント情報のみ）」について、更新 UI に対応する画面が要件（画面一覧.md）に
+    存在しないため、第 1 版は参照（R）のみを設計する（決定内容は 概要.md「前提条件」参照）。
+paths:
+  /api/tenants:
+    post:
+      operationId: registerTenant
+      summary: 企業アカウント（テナント）と初回ユーザーを登録する
+      description: |
+        受け入れ条件: AC-001, AC-101, AC-102, AC-201, AC-401（アカウント登録.md）
+        業務ルール: BR-001（テナント発行単位）, BR-002（ユーザー単位ログイン ID 必須）
+        法人重複判定は 法人名+住所 の正規化後完全一致（Q-A1）。DB の UNIQUE 制約（tenants.company_name, tenants.address）で
+        最終防御し、アプリ層の事前チェックと二重化する。
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TenantRegistrationRequest" }
+      responses:
+        "201":
+          description: 登録成功（AC-001）
+          content:
+            application/json:
+              schema:
+                { $ref: "#/components/schemas/TenantRegistrationResponse" }
+        "400":
+          description: 必須項目未入力・形式不正（AC-102, MSG-014）、規約未同意（AC-101, MSG-018）
+          $ref: "./_common.yaml#/components/responses/BadRequest"
+        "409":
+          description: 法人重複（AC-201, DUPLICATE, MSG-024）
+          $ref: "./_common.yaml#/components/responses/Conflict"
+        "500":
+          $ref: "./_common.yaml#/components/responses/InternalServerError"
+  /api/tenants/me:
+    get:
+      operationId: getMyTenant
+      summary: 自社テナント情報を取得する
+      description: |
+        権限マトリクス.md ENT-001「R（自社テナント情報のみ）」。
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: 取得成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TenantResponse" }
+        "401":
+          $ref: "./_common.yaml#/components/responses/Unauthorized"
+components:
+  schemas:
+    TenantRegistrationRequest:
+      type: object
+      required:
+        - tenantType, companyName, address, companyPhone, companyEmail, paymentMethod, termsAgreed
+        - initialUser
+      properties:
+        tenantType: { $ref: "./_common.yaml#/components/schemas/TenantType" }
+        companyName:
+          {
+            type: string,
+            minLength: 1,
+            maxLength: 200,
+            x-validate-not-blank: true,
+            pattern: "^[^<>]*$",
+          }
+        address:
+          {
+            type: string,
+            minLength: 1,
+            maxLength: 500,
+            x-validate-not-blank: true,
+            pattern: "^[^<>]*$",
+          }
+        companyPhone:
+          {
+            type: string,
+            minLength: 1,
+            maxLength: 20,
+            pattern: '^[0-9\-()+ ]*$',
+          }
+        companyEmail: { type: string, format: email, maxLength: 255 }
+        paymentMethod:
+          { $ref: "./_common.yaml#/components/schemas/PaymentMethod" }
+        termsAgreed:
+          type: boolean
+          description: "利用規約・プライバシーポリシー同意（true 必須。false/未送信は VALIDATION_ERROR, MSG-018）"
+        initialUser:
+          type: object
+          required: [displayName, loginId, email, password]
+          properties:
+            displayName:
+              {
+                type: string,
+                minLength: 1,
+                maxLength: 100,
+                x-validate-not-blank: true,
+                pattern: "^[^<>]*$",
+              }
+            loginId:
+              {
+                type: string,
+                minLength: 1,
+                maxLength: 50,
+                x-validate-not-blank: true,
+                pattern: "^[^<>]*$",
+              }
+            email: { type: string, format: email, maxLength: 255 }
+            password:
+              type: string
+              minLength: 8
+              maxLength: 100
+              writeOnly: true
+              x-sensitive: true
+              description: "最小8文字、英字(大小問わず)と数字を各1文字以上含む（Q-NF4）"
+    TenantRegistrationResponse:
+      type: object
+      required: [tenantId, userId]
+      properties:
+        tenantId: { type: integer, format: int64 }
+        userId: { type: integer, format: int64 }
+    TenantResponse:
+      type: object
+      required:
+        [
+          tenantId,
+          tenantType,
+          companyName,
+          address,
+          companyPhone,
+          companyEmail,
+          paymentMethod,
+        ]
+      properties:
+        tenantId: { type: integer, format: int64 }
+        tenantType: { $ref: "./_common.yaml#/components/schemas/TenantType" }
+        companyName: { type: string }
+        address: { type: string }
+        companyPhone: { type: string }
+        companyEmail: { type: string }
+        paymentMethod:
+          { $ref: "./_common.yaml#/components/schemas/PaymentMethod" }

@@ -1,0 +1,133 @@
+openapi: 3.1.0
+info:
+  title: セット応募（SetBid）API
+  version: 0.1.0
+  description: |
+    関連要件: docs/requirements/functional/応募.md, 交渉合意成約.md
+    関連画面: SCR-014, SCR-015, SCR-015-01（セット応募選択モーダル）, SCR-009, SCR-009-01（セット応募連動確認モーダル）
+    関連ユースケース: UC-012（セット応募する）
+    関連業務ルール: BR-005（同一配送依頼企業の案件同士に限る）, BR-006（オール・オア・ナッシング）,
+    BR-007（個別案件としても並行して他社応募を受付）, BR-008（セット一括承認）, BR-009（応募枠は案件ごとに1消費）
+paths:
+  /api/set-bids:
+    post:
+      operationId: createSetBid
+      summary: 複数案件をまとめてセット応募する
+      description: |
+        受け入れ条件: AC-201, AC-202（応募.md）
+        対象案件はすべて同一の配送依頼企業（requesterTenantId）が登録した募集中・交渉中案件に限る（BR-005）。
+        異なる配送依頼企業の案件が混在する場合は 400 SET_BID_TENANT_MISMATCH（MSG-003）。
+        各対象案件で個別に BR-009（応募上限20）・BR-010（自動締切）・BR-004（重複応募）を検証し、
+        1 つでも条件を満たさない案件があれば、セット全体をロールバックする（部分成立なし）。
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SetBidCreateRequest" }
+      responses:
+        "201":
+          description: セット応募成功（AC-201）
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SetBidResponse" }
+        "400":
+          description: "異なる配送依頼企業の案件混在（SET_BID_TENANT_MISMATCH, MSG-003, AC-202）、入力検証エラー"
+          $ref: "./_common.yaml#/components/responses/BadRequest"
+        "403":
+          $ref: "./_common.yaml#/components/responses/Forbidden"
+        "404":
+          description: "対象案件のいずれかが存在しない"
+          $ref: "./_common.yaml#/components/responses/NotFound"
+        "409":
+          description: "対象案件のいずれかが応募上限超過・締切超過・重複応募（BID_LIMIT_EXCEEDED / BID_DEADLINE_PASSED / DUPLICATE）"
+          $ref: "./_common.yaml#/components/responses/Conflict"
+  /api/set-bids/{setBidId}:
+    get:
+      operationId: getSetBidById
+      summary: セット応募の詳細（対象案件・各応募の状態）を取得する
+      description: |
+        関連画面: SCR-009-01（セット応募連動確認モーダル）, SCR-015
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: setBidId
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        "200":
+          description: 取得成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SetBidResponse" }
+        "403":
+          $ref: "./_common.yaml#/components/responses/Forbidden"
+        "404":
+          $ref: "./_common.yaml#/components/responses/NotFound"
+  /api/set-bids/{setBidId}/agree:
+    post:
+      operationId: agreeSetBid
+      summary: セット応募に一括合意し、セット内すべての案件を成約させる
+      description: |
+        受け入れ条件: AC-002（交渉合意成約.md）, AC-201（応募.md/交渉合意成約.md）
+        業務ルール: BR-006（オール・オア・ナッシング）, BR-008（セット一括承認。案件ごとの個別合意は行わない）,
+        BR-013（案件ごとに成約スナップショットを保存）, BR-014, BR-015（連動クローズ・通知）
+        排他制御: セット内の全案件 ID を昇順ソートし FOR UPDATE で一括ロック取得後、全案件が
+        募集中/交渉中のまま維持されていることを再検証してから一括更新する（2段階ロック方式、
+        詳細は sequences/セット応募一括合意.md、B-3 是正）。
+        認可: 対象セット応募が参照する全案件の配送依頼企業（自テナント）のみ。
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: setBidId
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        "200":
+          description: 一括合意・成約成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SetBidResponse" }
+        "403":
+          $ref: "./_common.yaml#/components/responses/Forbidden"
+        "404":
+          $ref: "./_common.yaml#/components/responses/NotFound"
+        "409":
+          description: "セット内のいずれかの案件が既に他状態へ遷移（CONFLICT, MSG-009, BR-006）"
+          $ref: "./_common.yaml#/components/responses/Conflict"
+components:
+  schemas:
+    SetBidCreateRequest:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          minItems: 2
+          items:
+            type: object
+            required: [jobId, amount]
+            properties:
+              jobId: { type: integer, format: int64 }
+              amount: { type: integer, minimum: 1, x-validate-positive: true }
+    SetBidResponse:
+      type: object
+      required:
+        [setBidId, carrierTenantId, requesterTenantId, status, bids, createdAt]
+      properties:
+        setBidId: { type: integer, format: int64 }
+        carrierTenantId: { type: integer, format: int64 }
+        requesterTenantId: { type: integer, format: int64 }
+        status:
+          allOf:
+            - $ref: "./_common.yaml#/components/schemas/SetBidStatus"
+        bids:
+          type: array
+          items:
+            {
+              $ref: "./bids.yaml#/components/schemas/BidWithJobSummaryResponse",
+            }
+        createdAt: { type: string, format: date-time }

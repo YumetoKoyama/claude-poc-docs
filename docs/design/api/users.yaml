@@ -1,0 +1,95 @@
+openapi: 3.1.0
+info:
+  title: ユーザー API
+  version: 0.1.0
+  description: |
+    関連要件: docs/requirements/functional/アカウント登録.md
+    関連画面: SCR-005 ユーザー追加画面, 全画面共通ヘッダー（共通レイアウト.md）
+    関連ユースケース: UC-003
+    関連業務ルール: BR-002, BR-003
+paths:
+  /api/users:
+    post:
+      operationId: createUser
+      summary: 自テナント配下に新規ユーザーを追加する
+      description: |
+        受け入れ条件: AC-002, AC-101, AC-102（アカウント登録.md）
+        業務ルール: BR-002（ユーザー単位ログイン ID 必須。テナント内一意）, BR-003（同権限のみ）
+        認可: 自テナント配下への追加のみ許可（セキュリティ設計.md 5節 認可設計 参照）。
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UserCreateRequest" }
+      responses:
+        "201":
+          description: 追加成功（AC-002）
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserResponse" }
+        "400":
+          $ref: "./_common.yaml#/components/responses/BadRequest"
+        "401":
+          $ref: "./_common.yaml#/components/responses/Unauthorized"
+        "409":
+          description: ログイン ID がテナント内で重複、または登録メールアドレスがシステム全体で重複（DUPLICATE）
+          $ref: "./_common.yaml#/components/responses/Conflict"
+  /api/users/me:
+    get:
+      operationId: getCurrentUser
+      summary: ログイン中ユーザーとテナットの情報を取得する（共通ヘッダー表示用）
+      description: |
+        画面リロード時・共通レイアウト（screens/共通レイアウト.md）のヘッダー表示データ源（D-2 対応）。
+        レスポンス形状は auth.yaml の LoginResponse.user と同一にする。
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: 取得成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserResponse" }
+        "401":
+          $ref: "./_common.yaml#/components/responses/Unauthorized"
+components:
+  schemas:
+    UserCreateRequest:
+      type: object
+      required: [displayName, loginId, email, password]
+      properties:
+        displayName:
+          {
+            type: string,
+            minLength: 1,
+            maxLength: 100,
+            x-validate-not-blank: true,
+            pattern: "^[^<>]*$",
+          }
+        loginId:
+          {
+            type: string,
+            minLength: 1,
+            maxLength: 50,
+            x-validate-not-blank: true,
+            pattern: "^[^<>]*$",
+          }
+        email: { type: string, format: email, maxLength: 255 }
+        password:
+          type: string
+          minLength: 8
+          maxLength: 100
+          writeOnly: true
+          x-sensitive: true
+          description: "最小8文字、英字(大小問わず)と数字を各1文字以上含む（Q-NF4）"
+    UserResponse:
+      type: object
+      required: [userId, displayName, tenantId, tenantName, tenantType]
+      properties:
+        userId: { type: integer, format: int64 }
+        displayName: { type: string }
+        loginId: { type: string }
+        tenantId: { type: integer, format: int64 }
+        tenantName: { type: string }
+        tenantType: { $ref: "./_common.yaml#/components/schemas/TenantType" }

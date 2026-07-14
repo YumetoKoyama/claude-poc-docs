@@ -1,0 +1,193 @@
+openapi: 3.1.0
+info:
+  title: 認証 API
+  version: 0.1.0
+  description: |
+    関連要件: docs/requirements/functional/認証.md
+    関連画面: SCR-001 ログイン画面, SCR-003 パスワードリセット申請画面, SCR-004 パスワードリセット再設定画面
+    関連業務ルール: BR-002
+    JWT ライフサイクル・ロック方式の確定値は docs/design/セキュリティ設計.md を参照。
+paths:
+  /api/auth/login:
+    post:
+      operationId: login
+      summary: ログイン ID・パスワードで認証しトークンを発行する
+      description: |
+        受け入れ条件: AC-001, AC-101, AC-201（認証.md）
+        業務ルール: BR-002
+        ログイン失敗はテナント内ユーザー単位でカウントする（users.failed_login_count / locked_until）。
+        レスポンスの user オブジェクトは、ログイン後の共通レイアウト（ヘッダー）表示のデータ源（D-2 対応）。
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [loginId, password]
+              properties:
+                loginId:
+                  {
+                    type: string,
+                    minLength: 1,
+                    maxLength: 50,
+                    pattern: "^[^<>]*$",
+                  }
+                password:
+                  {
+                    type: string,
+                    minLength: 8,
+                    maxLength: 100,
+                    writeOnly: true,
+                    x-sensitive: true,
+                  }
+      responses:
+        "200":
+          description: 認証成功
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LoginResponse" }
+        "401":
+          description: 認証失敗（AC-101, MSG-015）またはロック中（AC-201, MSG-016）
+          content:
+            application/json:
+              schema:
+                { $ref: "./_common.yaml#/components/schemas/ErrorResponse" }
+        "500":
+          $ref: "./_common.yaml#/components/responses/InternalServerError"
+  /api/auth/refresh:
+    post:
+      operationId: refreshAccessToken
+      summary: リフレッシュトークンでアクセストークンを再発行する
+      description: |
+        セキュリティ設計.md の JWT ライフサイクル（アクセストークン 30 分 / リフレッシュトークン 8 時間絶対有効期限）に従う。
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken:
+                  { type: string, writeOnly: true, x-sensitive: true }
+      responses:
+        "200":
+          description: 再発行成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [accessToken, accessTokenExpiresAt]
+                properties:
+                  accessToken: { type: string, writeOnly: false }
+                  accessTokenExpiresAt: { type: string, format: date-time }
+        "401":
+          description: リフレッシュトークンが無効・失効・revoke 済み
+          $ref: "./_common.yaml#/components/responses/Unauthorized"
+  /api/auth/logout:
+    post:
+      operationId: logout
+      summary: ログアウトする（リフレッシュトークンを失効させる）
+      description: |
+        受け入れ条件: AC-002（認証.md）
+        STATELESS JWT のためアクセストークン自体はクライアント側で破棄する。サーバー側はリフレッシュトークン（refresh_tokens テーブル）を revoke する。
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken:
+                  { type: string, writeOnly: true, x-sensitive: true }
+      responses:
+        "204":
+          description: ログアウト成功
+        "401":
+          $ref: "./_common.yaml#/components/responses/Unauthorized"
+  /api/auth/password-reset-requests:
+    post:
+      operationId: requestPasswordReset
+      summary: パスワードリセット用メールの送信を申請する
+      description: |
+        受け入れ条件: AC-102（認証.md）
+        アカウント存在の露見防止のため、登録有無に関わらず常に 202 を返す（EXT-001, Q-NF8）。
+        送信失敗時もこの API 自体は成功扱いとする（通知・業務トランザクション分離、通知・文面定義.md）。
+        レート制限: 同一メールアドレスに対し 1 時間あたり 5 回まで（セキュリティ設計.md 参照）。
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email, maxLength: 255 }
+      responses:
+        "202":
+          description: 申請受理（送信結果に関わらず常にこの応答。ユーザー列挙防止）
+        "429":
+          $ref: "./_common.yaml#/components/responses/TooManyRequests"
+  /api/auth/password-reset:
+    post:
+      operationId: resetPassword
+      summary: 再設定用トークンで新パスワードを設定する
+      description: |
+        受け入れ条件: AC-401（認証.md）
+        トークン有効期限: 発行から 1 時間（Q-NF3）。期限切れは RESET_TOKEN_EXPIRED（MSG-019）。
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, newPassword]
+              properties:
+                token: { type: string, writeOnly: true, x-sensitive: true }
+                newPassword:
+                  type: string
+                  minLength: 8
+                  maxLength: 100
+                  writeOnly: true
+                  x-sensitive: true
+                  description: "最小8文字、英字(大小問わず)と数字を各1文字以上含む（Q-NF4）"
+      responses:
+        "204":
+          description: 再設定成功
+        "400":
+          description: トークン期限切れ（RESET_TOKEN_EXPIRED, MSG-019）またはパスワードポリシー違反（VALIDATION_ERROR）
+          $ref: "./_common.yaml#/components/responses/BadRequest"
+components:
+  schemas:
+    LoginResponse:
+      type: object
+      required:
+        [
+          accessToken,
+          accessTokenExpiresAt,
+          refreshToken,
+          refreshTokenExpiresAt,
+          user,
+        ]
+      properties:
+        accessToken: { type: string }
+        accessTokenExpiresAt: { type: string, format: date-time }
+        refreshToken: { type: string, writeOnly: false, x-sensitive: true }
+        refreshTokenExpiresAt: { type: string, format: date-time }
+        user:
+          type: object
+          required: [userId, displayName, tenantId, tenantName, tenantType]
+          properties:
+            userId: { type: integer, format: int64 }
+            displayName: { type: string }
+            tenantId: { type: integer, format: int64 }
+            tenantName: { type: string }
+            tenantType:
+              { $ref: "./_common.yaml#/components/schemas/TenantType" }
