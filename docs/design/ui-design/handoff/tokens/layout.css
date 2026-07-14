@@ -1,0 +1,9 @@
+:root {
+  /* デスクトップ専用固定レイアウト（1280px以上、レスポンシブ非対応） */
+  --layout-min-width: 1280px;
+  --header-height: 56px;
+  --nav-width: 220px;
+  --page-padding-x: 32px;
+  --page-padding-y: 24px;
+  --content-max-width: 1440px;
+}
